@@ -1,0 +1,347 @@
+---
+title: "AI Model Benchmarking Framework"
+description: "Automated benchmarking system for LLM evaluation with ground truth validation and parallel processing for faster evaluation across 5+ models."
+date: "2024-07-15"
+tags: ["Spring Boot", "JUnit 5", "Parallel Processing", "Model Evaluation", "LLM Testing"]
+metrics:
+  - label: "Models Tested"
+    value: "5+"
+  - label: "Test Cases"
+    value: "500+"
+  - label: "Eval Time Reduction"
+    value: "5x faster"
+---
+
+## The Challenge
+
+When building the AI Financial Classification system, we needed to systematically evaluate multiple LLM models to find the optimal one for our use case.
+
+**Problems with manual testing:**
+- **Time-consuming:** Testing one model on 500 documents took hours
+- **Inconsistent:** Results varied based on manual scoring
+- **Not reproducible:** Hard to compare across models
+- **No metrics:** Gut feeling vs. quantitative data
+
+**Requirements:**
+- Test multiple models (Qwen, Llama, Mistral, GPT variants)
+- Ground truth dataset with manually labeled examples
+- Standard metrics: Precision, Recall, F1, Accuracy
+- Detailed CSV reports for analysis
+- Fast evaluation through parallel processing
+
+## Solution: Automated Benchmarking Framework
+
+I built a **systematic evaluation framework** using JUnit 5's parameterized tests and parallel execution capabilities.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│          Ground Truth Dataset                    │
+│   500 labeled documents (CSV)                    │
+│   - document_id, content, true_label             │
+└──────────────────┬──────────────────────────────┘
+                   │
+                   ↓
+┌─────────────────────────────────────────────────┐
+│       Benchmarking Test Suite                    │
+│  @ParameterizedTest per model                    │
+│  @Execution(CONCURRENT) for parallel             │
+└──────────────────┬──────────────────────────────┘
+                   │
+        ┌──────────┴──────────┬──────────┐
+        ↓                     ↓          ↓
+┌──────────────┐    ┌──────────────┐  ┌──────────────┐
+│   Qwen 32B   │    │  Llama 70B   │  │  Mistral 7B  │
+│   Worker     │    │   Worker     │  │   Worker     │
+└──────┬───────┘    └──────┬───────┘  └──────┬───────┘
+       │                   │                  │
+       └───────────────────┴──────────────────┘
+                           │
+                           ↓
+┌─────────────────────────────────────────────────┐
+│            Results Aggregator                    │
+│  • Confusion Matrix                              │
+│  • Precision, Recall, F1                         │
+│  • Processing Time                               │
+│  • CSV Report Generation                         │
+└─────────────────────────────────────────────────┘
+```
+
+## Implementation
+
+### 1. Ground Truth Dataset
+
+```java
+// Pseudocode
+@Data
+public class TestCase {
+    private String documentId;
+    private String content;
+    private boolean trueLabel;     // true = relevant, false = not relevant
+    private String category;       // M&A, earnings, general
+    private int complexity;        // 1-5 difficulty rating
+}
+
+@Component
+public class GroundTruthLoader {
+
+    public List<TestCase> loadDataset(String path) {
+        return CsvReader.read(path, TestCase.class);
+    }
+}
+```
+
+**Dataset Structure:**
+- **500 manually labeled documents**
+- **60% negative, 40% positive** (reflecting real-world distribution)
+- **Complexity ratings** to analyze model performance on hard cases
+- **Categories** to identify model strengths/weaknesses
+
+### 2. Parameterized Test Framework
+
+```java
+// Pseudocode
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Execution(ExecutionMode.CONCURRENT)  // Run tests in parallel
+public class ModelBenchmarkTest {
+
+    private static final List<TestCase> GROUND_TRUTH = loadDataset();
+
+    @ParameterizedTest
+    @MethodSource("modelProvider")
+    void benchmarkModel(ModelConfig modelConfig) {
+        // 1. Initialize model
+        ClassificationService service = new ClassificationService(modelConfig);
+
+        // 2. Run all test cases
+        List<ClassificationResult> results = GROUND_TRUTH.stream()
+            .map(testCase -> {
+                long startTime = System.currentTimeMillis();
+                boolean predicted = service.classify(testCase.getContent());
+                long duration = System.currentTimeMillis() - startTime;
+
+                return new ClassificationResult(
+                    testCase.getDocumentId(),
+                    testCase.getTrueLabel(),
+                    predicted,
+                    duration
+                );
+            })
+            .collect(Collectors.toList());
+
+        // 3. Calculate metrics
+        ModelMetrics metrics = MetricsCalculator.calculate(results);
+
+        // 4. Generate report
+        CsvReporter.generateReport(modelConfig.getName(), metrics, results);
+
+        // 5. Assertions
+        assertThat(metrics.getPrecision()).isGreaterThan(0.75);
+        assertThat(metrics.getRecall()).isGreaterThan(0.70);
+    }
+
+    static Stream<ModelConfig> modelProvider() {
+        return Stream.of(
+            new ModelConfig("Qwen-2.5-32B", "http://localhost:8001"),
+            new ModelConfig("Llama-3.1-70B", "http://localhost:8002"),
+            new ModelConfig("Mistral-7B", "http://localhost:8003"),
+            new ModelConfig("GPT-OSS-87B", "http://localhost:8004"),
+            new ModelConfig("Qwen-2.5-14B", "http://localhost:8005")
+        );
+    }
+}
+```
+
+### 3. Metrics Calculation
+
+```java
+// Pseudocode
+public class MetricsCalculator {
+
+    public static ModelMetrics calculate(List<ClassificationResult> results) {
+        int tp = 0, fp = 0, tn = 0, fn = 0;
+
+        for (ClassificationResult result : results) {
+            if (result.getTrueLabel() && result.getPredicted()) {
+                tp++;  // True Positive
+            } else if (!result.getTrueLabel() && result.getPredicted()) {
+                fp++;  // False Positive
+            } else if (!result.getTrueLabel() && !result.getPredicted()) {
+                tn++;  // True Negative
+            } else {
+                fn++;  // False Negative
+            }
+        }
+
+        double precision = (double) tp / (tp + fp);
+        double recall = (double) tp / (tp + fn);
+        double f1 = 2 * (precision * recall) / (precision + recall);
+        double accuracy = (double) (tp + tn) / results.size();
+
+        long totalTime = results.stream()
+            .mapToLong(ClassificationResult::getDuration)
+            .sum();
+        double avgTime = totalTime / (double) results.size();
+
+        return ModelMetrics.builder()
+            .precision(precision)
+            .recall(recall)
+            .f1Score(f1)
+            .accuracy(accuracy)
+            .truePositives(tp)
+            .falsePositives(fp)
+            .trueNegatives(tn)
+            .falseNegatives(fn)
+            .avgProcessingTime(avgTime)
+            .build();
+    }
+}
+```
+
+### 4. CSV Report Generation
+
+```java
+// Pseudocode
+public class CsvReporter {
+
+    public static void generateReport(String modelName, ModelMetrics metrics, List<ClassificationResult> results) {
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME);
+        String filename = String.format("reports/%s_%s.csv", modelName, timestamp);
+
+        // Summary CSV
+        try (CsvWriter writer = new CsvWriter(filename)) {
+            writer.writeHeader("Metric", "Value");
+            writer.writeRow("Model", modelName);
+            writer.writeRow("Precision", metrics.getPrecision());
+            writer.writeRow("Recall", metrics.getRecall());
+            writer.writeRow("F1 Score", metrics.getF1Score());
+            writer.writeRow("Accuracy", metrics.getAccuracy());
+            writer.writeRow("True Positives", metrics.getTruePositives());
+            writer.writeRow("False Positives", metrics.getFalsePositives());
+            writer.writeRow("True Negatives", metrics.getTrueNegatives());
+            writer.writeRow("False Negatives", metrics.getFalseNegatives());
+            writer.writeRow("Avg Processing Time (ms)", metrics.getAvgProcessingTime());
+        }
+
+        // Detailed results CSV
+        String detailFilename = String.format("reports/%s_%s_details.csv", modelName, timestamp);
+        try (CsvWriter writer = new CsvWriter(detailFilename)) {
+            writer.writeHeader("Document ID", "True Label", "Predicted", "Correct", "Duration (ms)");
+            results.forEach(result -> {
+                boolean correct = result.getTrueLabel() == result.getPredicted();
+                writer.writeRow(
+                    result.getDocumentId(),
+                    result.getTrueLabel(),
+                    result.getPredicted(),
+                    correct,
+                    result.getDuration()
+                );
+            });
+        }
+    }
+}
+```
+
+## Parallel Processing
+
+**Challenge:** Testing 5 models on 500 documents = 2,500 inferences (slow!)
+
+**Solution:** JUnit 5 parallel execution
+
+```java
+// junit-platform.properties
+junit.jupiter.execution.parallel.enabled = true
+junit.jupiter.execution.parallel.mode.default = concurrent
+junit.jupiter.execution.parallel.config.strategy = fixed
+junit.jupiter.execution.parallel.config.fixed.parallelism = 5
+```
+
+**Result:**
+- **Serial execution:** ~45 minutes
+- **Parallel execution (5 threads):** ~9 minutes
+- **5x speedup**
+
+## Results
+
+### Model Comparison
+
+| Model | Precision | Recall | F1 Score | Avg Time (ms) |
+|-------|-----------|--------|----------|---------------|
+| **Qwen-2.5-32B** | **83%** | **78%** | **80%** | 1,200 |
+| Llama-3.1-70B | 81% | 72% | 76% | 2,400 |
+| Mistral-7B | 76% | 80% | 78% | 450 |
+| GPT-OSS-87B | 84% | 68% | 75% | 3,100 |
+| Qwen-2.5-14B | 79% | 75% | 77% | 800 |
+
+**Winner:** Qwen-2.5-32B
+- Best balance of precision/recall
+- Acceptable speed
+- Good handling of complex documents
+
+### Insights from Benchmarking
+
+**False Positives Analysis:**
+- Mistral-7B had highest FP rate on nuanced articles
+- Larger models (70B+) were too conservative (high precision, low recall)
+- Qwen-2.5-32B best handled ambiguous cases
+
+**Processing Time:**
+- Mistral-7B fastest but least accurate
+- GPT-OSS-87B accurate but too slow for production
+- Qwen-2.5-32B optimal trade-off
+
+**Complexity Analysis:**
+- All models struggled with complexity level 5 documents
+- Qwen-2.5-32B degraded most gracefully
+
+## Challenges & Learnings
+
+### Challenge 1: Ground Truth Quality
+
+**Problem:** Inconsistent manual labeling led to unreliable metrics.
+
+**Solution:**
+- Multi-annotator labeling
+- Consensus-based ground truth
+- Regular dataset review
+
+**Learning:** Garbage in, garbage out. Dataset quality is critical.
+
+### Challenge 2: Flaky Tests
+
+**Problem:** Models returned different results on same input (non-deterministic).
+
+**Solution:**
+- Set temperature=0 for deterministic output
+- Multiple runs and average results
+- Accept small variance in metrics
+
+### Challenge 3: Resource Contention
+
+**Problem:** Running 5 models in parallel exhausted GPU memory.
+
+**Solution:**
+- Model quantization (Q4_K_M) to reduce VRAM
+- Sequential GPU allocation
+- Model unloading between tests
+
+## Tech Stack
+
+- **Framework:** Spring Boot 3.x
+- **Testing:** JUnit 5 with parameterized tests
+- **Reporting:** Custom CSV generation
+- **Parallel Execution:** JUnit 5 parallel engine
+- **Metrics:** Custom implementation
+- **CI/CD:** GitHub Actions for automated benchmarking
+
+## Key Takeaways
+
+✅ **Systematic evaluation beats gut feeling**
+✅ **Parallel processing dramatically reduces eval time**
+✅ **Ground truth quality is paramount**
+✅ **Detailed reports enable data-driven decisions**
+✅ **Automate model comparison** to iterate faster
+✅ **Balance accuracy and speed** based on use case
+
+This framework enabled us to confidently select Qwen-2.5-32B for production, knowing it was the best model for our specific use case based on objective metrics.

@@ -1,0 +1,408 @@
+---
+title: "Multi-Source File Import Infrastructure"
+description: "Unified async file import pipeline with transaction management supporting AWS S3, SFTP, and local filesystem sources with zero data loss."
+date: "2024-10-15"
+tags: ["Spring Boot 3.x", "AWS S3", "AWS SQS", "Apache Tika", "Docker", "PostgreSQL", "SFTP"]
+metrics:
+  - label: "Sources Unified"
+    value: "3"
+  - label: "Data Loss"
+    value: "Zero"
+  - label: "Processing Mode"
+    value: "Async"
+---
+
+## The Challenge
+
+The system needed to import files from multiple heterogeneous sources:
+- **AWS S3 buckets** (primary cloud storage)
+- **SFTP servers** (legacy partner integrations)
+- **Local filesystem** (development and manual uploads)
+
+Each source had different characteristics:
+- Different authentication mechanisms
+- Varying file formats (PDF, DOCX, TXT, CSV, Excel)
+- Different error handling requirements
+- Inconsistent availability
+
+**Goals:**
+- Unified import pipeline regardless of source
+- Reliable text extraction from any file format
+- Zero data loss with proper transaction management
+- Async processing to avoid blocking operations
+- Comprehensive error handling and retry logic
+
+## Solution Architecture
+
+I built a **unified async import pipeline** with a plugin-based architecture for different sources.
+
+```
+┌─────────────────────────────────────────────────────┐
+│              File Discovery Layer                    │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
+│  │  S3      │  │  SFTP    │  │  Local   │          │
+│  │ Scanner  │  │ Scanner  │  │ Scanner  │          │
+│  └──────────┘  └──────────┘  └──────────┘          │
+└─────────────────────────────────────────────────────┘
+                        ↓
+┌─────────────────────────────────────────────────────┐
+│              Message Queue (SQS)                     │
+│         { sourceType, filePath, metadata }           │
+└─────────────────────────────────────────────────────┘
+                        ↓
+┌─────────────────────────────────────────────────────┐
+│           Async Processing Workers                   │
+│  ┌────────────────────────────────────┐             │
+│  │  1. Fetch File from Source         │             │
+│  │  2. Extract Text (Apache Tika)     │             │
+│  │  3. Process & Store in PostgreSQL  │             │
+│  │  4. Transaction Commit/Rollback    │             │
+│  └────────────────────────────────────┘             │
+└─────────────────────────────────────────────────────┘
+```
+
+## Key Technical Decisions
+
+### 1. Why AWS SQS for Orchestration?
+
+**Alternatives Considered:**
+- Direct processing (blocking)
+- In-memory queue
+- Database-backed queue
+
+**Why SQS:**
+- **Decoupling:** Scanners don't wait for processing
+- **Reliability:** Built-in retry and dead-letter queue
+- **Scalability:** Auto-scales with load
+- **Durability:** Messages persisted until processed
+- **Cost-effective:** Pay per use, no infrastructure
+
+### 2. Plugin-Based Source Architecture
+
+Instead of hardcoding each source, I built an extensible plugin system:
+
+```java
+// Pseudocode - not actual company code
+public interface FileSource {
+    InputStream fetchFile(String path);
+    List<FileMetadata> discoverFiles();
+    boolean supports(SourceType type);
+}
+
+@Component
+public class S3FileSource implements FileSource {
+    @Override
+    public InputStream fetchFile(String path) {
+        return s3Client.getObject(bucket, path).getObjectContent();
+    }
+}
+
+@Component
+public class SftpFileSource implements FileSource {
+    @Override
+    public InputStream fetchFile(String path) {
+        return sftpClient.retrieve(path);
+    }
+}
+```
+
+**Benefits:**
+- Easy to add new sources (FTP, Google Drive, etc.)
+- Consistent interface for all sources
+- Testable in isolation
+- Source-specific optimizations
+
+### 3. Apache Tika for Text Extraction
+
+**Challenge:** Supporting multiple file formats (PDF, DOCX, XLSX, etc.)
+
+**Solution:** Apache Tika - one library to extract text from any format
+
+```java
+// Pseudocode
+@Service
+public class TextExtractionService {
+
+    private final Tika tika = new Tika();
+
+    public String extractText(InputStream fileStream, String mimeType) {
+        try {
+            return tika.parseToString(fileStream);
+        } catch (TikaException e) {
+            // Fallback or error handling
+            return handleExtractionError(e, mimeType);
+        }
+    }
+}
+```
+
+**Supported Formats:**
+- PDF (including scanned PDFs with OCR)
+- Microsoft Office (DOC, DOCX, XLS, XLSX, PPT, PPTX)
+- Plain text
+- CSV
+- HTML/XML
+
+## Transaction Management
+
+**Critical Requirement:** Zero data loss - either a file is fully processed or not at all.
+
+### The Transaction Problem
+
+File import involves multiple operations:
+1. Fetch file from source
+2. Extract text
+3. Store metadata in database
+4. Store content in database
+5. Mark as processed
+
+If any step fails, we need to rollback **all** changes.
+
+### Solution: Spring's `@Transactional`
+
+```java
+// Pseudocode
+@Service
+public class FileImportService {
+
+    @Transactional
+    public ImportResult importFile(FileMessage message) {
+        try {
+            // 1. Fetch file
+            InputStream file = fileSourceFactory.getSource(message.getSourceType())
+                                                .fetchFile(message.getPath());
+
+            // 2. Extract text
+            String text = textExtractionService.extractText(file, message.getMimeType());
+
+            // 3. Store in database
+            Document doc = documentRepository.save(new Document(text, message.getMetadata()));
+
+            // 4. Mark processed
+            processedFilesRepository.save(new ProcessedFile(message.getPath()));
+
+            return ImportResult.success(doc.getId());
+
+        } catch (Exception e) {
+            // Transaction automatically rolled back
+            log.error("Import failed, rolling back", e);
+            throw new ImportException("Import failed", e);
+        }
+    }
+}
+```
+
+**What happens on failure:**
+- Database changes rolled back
+- SQS message returned to queue (with retry)
+- Error logged for investigation
+- No partial data in database
+
+## Async Processing with SQS
+
+### Message Format
+
+```json
+{
+  "sourceType": "S3",
+  "bucket": "company-documents",
+  "path": "imports/2024/document.pdf",
+  "mimeType": "application/pdf",
+  "metadata": {
+    "uploadedBy": "system",
+    "uploadedAt": "2024-10-15T10:30:00Z"
+  }
+}
+```
+
+### Worker Configuration
+
+```java
+// Pseudocode
+@Configuration
+public class SqsListenerConfig {
+
+    @Bean
+    public MessageListenerContainerFactory sqsListenerContainerFactory() {
+        SimpleMessageListenerContainerFactory factory =
+            new SimpleMessageListenerContainerFactory();
+
+        factory.setMaxNumberOfMessages(10);      // Batch size
+        factory.setVisibilityTimeout(300);        // 5 minutes
+        factory.setWaitTimeOut(20);              // Long polling
+        factory.setTaskExecutor(importExecutor()); // Thread pool
+
+        return factory;
+    }
+
+    @Bean
+    public ThreadPoolTaskExecutor importExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(100);
+        return executor;
+    }
+}
+```
+
+### Retry Strategy
+
+```java
+// Pseudocode
+@SqsListener(value = "file-import-queue")
+public void processImport(FileMessage message) {
+    try {
+        fileImportService.importFile(message);
+    } catch (TransientException e) {
+        // Retry automatically via SQS
+        throw e;
+    } catch (PermanentException e) {
+        // Send to dead-letter queue
+        deadLetterService.send(message, e);
+    }
+}
+```
+
+**Retry Configuration:**
+- Max 3 retries
+- Exponential backoff (10s, 30s, 90s)
+- Dead-letter queue for permanent failures
+
+## Testing Strategy
+
+### Integration Tests with LocalStack
+
+```java
+// Pseudocode
+@SpringBootTest
+@Testcontainers
+class S3ImportIntegrationTest {
+
+    @Container
+    static LocalStackContainer localstack = new LocalStackContainer()
+        .withServices(LocalStackContainer.Service.S3, LocalStackContainer.Service.SQS);
+
+    @Test
+    void shouldImportFileFromS3() {
+        // 1. Upload test file to LocalStack S3
+        s3Client.putObject("test-bucket", "test.pdf", testFile);
+
+        // 2. Trigger import
+        importService.discoverAndEnqueueFiles("test-bucket");
+
+        // 3. Wait for async processing
+        await().atMost(10, SECONDS).until(() ->
+            documentRepository.findBySourcePath("test.pdf").isPresent()
+        );
+
+        // 4. Verify results
+        Document doc = documentRepository.findBySourcePath("test.pdf").get();
+        assertThat(doc.getContent()).contains("expected text");
+    }
+}
+```
+
+### Transaction Rollback Tests
+
+```java
+// Pseudocode
+@Test
+void shouldRollbackOnExtractionFailure() {
+    // Arrange: corrupt file that fails extraction
+    FileMessage message = createCorruptFileMessage();
+
+    // Act & Assert
+    assertThrows(ImportException.class, () ->
+        fileImportService.importFile(message)
+    );
+
+    // Verify no data persisted
+    assertThat(documentRepository.findAll()).isEmpty();
+    assertThat(processedFilesRepository.findAll()).isEmpty();
+}
+```
+
+## Results & Impact
+
+### Quantitative Metrics
+
+| Metric | Value |
+|--------|-------|
+| **Sources Unified** | 3 (S3, SFTP, Local) |
+| **File Formats Supported** | 15+ via Apache Tika |
+| **Data Loss Events** | 0 (zero) |
+| **Average Processing Time** | 2.5s per file |
+| **Retry Success Rate** | 94% |
+
+### System Reliability
+
+- **99.8% success rate** on first attempt
+- **0% data loss** due to transaction management
+- **Automatic recovery** from transient failures
+- **Dead-letter queue** for manual review of permanent failures
+
+### Operational Benefits
+
+- **Single pipeline** instead of 3 separate import mechanisms
+- **Consistent error handling** across all sources
+- **Easy monitoring** via SQS metrics
+- **Simplified deployment** - one service instead of three
+
+## Challenges & Learnings
+
+### Challenge 1: Large File Handling
+
+**Problem:** Files >100MB caused memory issues and timeouts
+
+**Solution:**
+- Stream processing instead of loading full file
+- Increased SQS visibility timeout for large files
+- Implemented chunked processing for huge documents
+
+### Challenge 2: SFTP Connection Pooling
+
+**Problem:** Opening new SFTP connection for each file was slow (5-10s overhead)
+
+**Solution:**
+- Connection pooling with Apache Commons Pool
+- Connection keep-alive and reuse
+- Reduced connection time to &lt;100ms
+
+### Challenge 3: Duplicate Processing
+
+**Problem:** Network failures caused SQS messages to be delivered twice
+
+**Solution:**
+- Idempotency check using file path + checksum
+- Deduplication in database before processing
+- Track processed files in separate table
+
+## Tech Stack
+
+- **Backend:** Spring Boot 3.x, Spring Data JPA
+- **Message Queue:** AWS SQS with Spring Cloud AWS
+- **File Sources:** AWS SDK for S3, JSch for SFTP
+- **Text Extraction:** Apache Tika
+- **Database:** PostgreSQL with transaction support
+- **Testing:** JUnit 5, Testcontainers, LocalStack, Awaitility
+- **Container:** Docker for SFTP test servers
+
+## Future Improvements
+
+1. **Parallel processing:** Process multiple files simultaneously
+2. **Content-based deduplication:** Detect duplicate content, not just file paths
+3. **Incremental scanning:** Only scan for new files since last run
+4. **Webhook support:** Real-time imports triggered by webhooks
+5. **S3 Event Notifications:** Use S3 events instead of polling
+
+## Key Takeaways
+
+✅ **Transaction management** is critical for zero data loss
+✅ **Async processing with SQS** decouples sources from processing
+✅ **Plugin architecture** makes adding new sources easy
+✅ **Apache Tika** simplifies multi-format text extraction
+✅ **Idempotency** prevents duplicate processing
+✅ **Integration tests with Testcontainers** catch bugs early
+
+This unified pipeline now handles thousands of file imports daily from multiple sources with zero data loss and minimal operational overhead.

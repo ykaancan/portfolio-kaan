@@ -1,0 +1,390 @@
+---
+title: "Audit System with Javers"
+description: "Enterprise audit system with UUID to Long migration and custom commit metadata for comprehensive entity change tracking and compliance."
+date: "2024-06-20"
+tags: ["Spring Boot", "Javers", "PostgreSQL", "Audit Logging", "Data Migration"]
+metrics:
+  - label: "Migration"
+    value: "UUID→Long"
+  - label: "Entities Tracked"
+    value: "25+"
+  - label: "Audit Events"
+    value: "100K+/month"
+---
+
+## The Challenge
+
+Building a comprehensive **audit system** to track all entity changes in our application for:
+- **Compliance requirements:** Financial regulations require full audit trails
+- **Debugging:** Understanding who changed what and when
+- **Data recovery:** Ability to restore previous versions
+- **User accountability:** Track user actions for security
+
+**Requirements:**
+- Track changes to 25+ entity types
+- Store who made changes, when, and why
+- Support complex nested objects
+- Performant queries to retrieve entity history
+- Migrate from UUID to Long IDs without losing audit history
+
+## Solution: Javers Integration
+
+**Javers** is a Java library for auditing and comparing object graphs.
+
+### Why Javers?
+
+**Alternatives:** Hibernate Envers, Spring Data Envers, Custom audit tables
+
+**Why Javers:**
+- **Automatic change detection** via object comparison
+- **JSON storage** for flexible schema changes
+- **Powerful query API** for entity history
+- **Shadow tracking** - no need to modify entity classes
+- **Custom commit metadata** support
+- **Active development** and good documentation
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────┐
+│         Application Layer                       │
+│  @Transactional service methods                 │
+└───────────────────┬────────────────────────────┘
+                    │
+                    │ Entity changes
+                    ↓
+┌────────────────────────────────────────────────┐
+│        Javers Aspect (AOP)                      │
+│  @JaversSpringDataAuditable                     │
+│  Intercepts repository save/delete              │
+└───────────────────┬────────────────────────────┘
+                    │
+                    │ Commit with metadata
+                    ↓
+┌────────────────────────────────────────────────┐
+│        PostgreSQL Database                      │
+│  • jv_commit (commit metadata)                  │
+│  • jv_commit_property (custom properties)       │
+│  • jv_snapshot (entity states in JSON)          │
+│  • jv_global_id (entity references)             │
+└────────────────────────────────────────────────┘
+```
+
+## Implementation
+
+### 1. Javers Configuration
+
+```java
+// Pseudocode
+@Configuration
+@EnableJaversAuditing
+public class JaversConfig {
+
+    @Bean
+    public Javers javers(PlatformTransactionManager txManager, AuthorProvider authorProvider) {
+        JaversSqlRepository sqlRepository = SqlRepositoryBuilder
+            .sqlRepository()
+            .withConnectionProvider(jpaConnectionProvider)
+            .withDialect(DialectName.POSTGRES)
+            .build();
+
+        return JaversBuilder.javers()
+            .registerJaversRepository(sqlRepository)
+            .withTxManager(txManager)
+            .withObjectAccessHook(new HibernateUnproxyObjectAccessHook())
+            .build();
+    }
+
+    @Bean
+    public AuthorProvider authorProvider() {
+        return () -> {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            return auth != null ? auth.getName() : "system";
+        };
+    }
+
+    @Bean
+    public CommitPropertiesProvider commitPropertiesProvider() {
+        return new SpringSecurityCommitPropertiesProvider();
+    }
+}
+```
+
+### 2. Enable Auditing on Repositories
+
+```java
+// Pseudocode
+@Repository
+@JaversSpringDataAuditable
+public interface CompanyRepository extends JpaRepository<Company, Long> {
+    // All save/delete operations automatically audited
+}
+
+@Entity
+@Table(name = "companies")
+public class Company {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;  // Migrated from UUID
+
+    private String name;
+    private String ticker;
+    private String industry;
+
+    @OneToMany(mappedBy = "company", cascade = CascadeType.ALL)
+    private List<Contact> contacts;  // Nested objects tracked too
+
+    // ... getters/setters
+}
+```
+
+### 3. Custom Commit Metadata
+
+Track additional context with each change:
+
+```java
+// Pseudocode
+@Service
+public class CompanyService {
+
+    @Autowired
+    private Javers javers;
+
+    @Autowired
+    private CompanyRepository companyRepository;
+
+    public Company updateCompany(Long id, CompanyUpdateRequest request) {
+        Company company = companyRepository.findById(id)
+            .orElseThrow(() -> new NotFoundException("Company not found"));
+
+        // Update fields
+        company.setName(request.getName());
+        company.setIndustry(request.getIndustry());
+
+        // Commit with custom properties
+        CommitMetadata metadata = CommitMetadata.builder()
+            .property("changeReason", request.getChangeReason())
+            .property("ticketId", request.getTicketId())
+            .property("ipAddress", RequestContextHolder.getIpAddress())
+            .property("userAgent", RequestContextHolder.getUserAgent())
+            .build();
+
+        javers.commit(SecurityContextHolder.getContext().getAuthentication().getName(),
+                     company,
+                     metadata.getProperties());
+
+        return companyRepository.save(company);
+    }
+}
+```
+
+### 4. Querying Audit History
+
+```java
+// Pseudocode
+@Service
+public class AuditQueryService {
+
+    @Autowired
+    private Javers javers;
+
+    public List<Change> getEntityHistory(Class<?> entityClass, Long id) {
+        JqlQuery query = QueryBuilder.byInstanceId(id, entityClass).build();
+        return javers.findChanges(query);
+    }
+
+    public List<Change> getPropertyHistory(Class<?> entityClass, Long id, String property) {
+        JqlQuery query = QueryBuilder.byInstanceId(id, entityClass)
+            .andProperty(property)
+            .build();
+        return javers.findChanges(query);
+    }
+
+    public List<CdoSnapshot> getSnapshots(Class<?> entityClass, Long id) {
+        JqlQuery query = QueryBuilder.byInstanceId(id, entityClass)
+            .withSnapshotQueryParams()
+            .build();
+        return javers.findSnapshots(query);
+    }
+
+    public List<Change> getChangesByAuthor(String author, LocalDate from, LocalDate to) {
+        JqlQuery query = QueryBuilder.byAuthor(author)
+            .from(from.atStartOfDay())
+            .to(to.atTime(23, 59, 59))
+            .build();
+        return javers.findChanges(query);
+    }
+}
+```
+
+## UUID to Long Migration
+
+**Challenge:** Existing system used UUID primary keys. Needed to migrate to Long for better performance and Javers compatibility.
+
+### Migration Strategy
+
+**1. Add Long ID column**
+```sql
+ALTER TABLE companies ADD COLUMN id_long BIGSERIAL;
+```
+
+**2. Migrate existing data**
+```sql
+-- Generate sequential IDs
+UPDATE companies SET id_long = row_number() OVER (ORDER BY created_at);
+```
+
+**3. Migrate Javers audit data**
+```sql
+-- Update jv_global_id references from UUID to Long
+UPDATE jv_global_id
+SET local_id = companies.id_long::text
+FROM companies
+WHERE jv_global_id.local_id = companies.id::text
+  AND jv_global_id.type_name = 'Company';
+```
+
+**4. Switch primary keys**
+```sql
+ALTER TABLE companies DROP CONSTRAINT companies_pkey;
+ALTER TABLE companies ADD PRIMARY KEY (id_long);
+ALTER TABLE companies DROP COLUMN id;
+ALTER TABLE companies RENAME COLUMN id_long TO id;
+```
+
+**Result:** Zero audit history lost during migration.
+
+## Results & Impact
+
+### Audit Coverage
+
+| Category | Count |
+|----------|-------|
+| **Entities Tracked** | 25+ |
+| **Audit Events/Month** | 100,000+ |
+| **Average Query Time** | &lt;100ms |
+| **Storage (JSON)** | 15 GB |
+
+### Compliance Benefits
+
+- **Full audit trail** for regulatory compliance
+- **Point-in-time recovery** for any entity
+- **Change attribution** - know who changed what
+- **Custom metadata** for business context
+
+### Use Cases
+
+**1. Debugging Data Issues**
+```java
+// Who changed this company's industry to the wrong value?
+List<Change> changes = auditService.getPropertyHistory(Company.class, companyId, "industry");
+// Result: User "john.doe" changed it on 2024-06-15 at 14:32
+```
+
+**2. Compliance Audits**
+```java
+// Show all changes by a specific user in date range
+List<Change> changes = auditService.getChangesByAuthor("jane.smith",
+    LocalDate.of(2024, 1, 1),
+    LocalDate.of(2024, 12, 31));
+```
+
+**3. Data Recovery**
+```java
+// Restore entity to state from 1 week ago
+CdoSnapshot snapshot = javers.getHistoricalState(
+    Company.class,
+    companyId,
+    LocalDateTime.now().minusWeeks(1)
+);
+Company historicalState = snapshot.getEntity();
+```
+
+## Performance Considerations
+
+### 1. Query Optimization
+
+```sql
+-- Add indexes for common queries
+CREATE INDEX idx_jv_commit_author ON jv_commit(author);
+CREATE INDEX idx_jv_commit_date ON jv_commit(commit_date);
+CREATE INDEX idx_jv_global_id_entity ON jv_global_id(type_name, local_id);
+```
+
+### 2. Snapshot Compression
+
+Javers stores snapshots as JSON. For large entities:
+
+```java
+// Configure Javers to ignore certain fields
+@Configuration
+public class JaversIgnoreConfig {
+
+    @Bean
+    public Javers javers() {
+        return JaversBuilder.javers()
+            .registerIgnoredClass(LazyLoaded.class)  // Don't track lazy collections
+            .registerValueObject(Address.class)      // Track as value, not entity
+            .build();
+    }
+}
+```
+
+### 3. Archival Strategy
+
+**Problem:** Audit table grows indefinitely
+
+**Solution:**
+- Archive snapshots older than 2 years to S3
+- Keep commit metadata for compliance (small)
+- Partition tables by year
+
+## Challenges & Learnings
+
+### Challenge 1: Hibernate Proxy Objects
+
+**Problem:** Javers tried to compare Hibernate proxy objects, causing errors.
+
+**Solution:**
+```java
+.withObjectAccessHook(new HibernateUnproxyObjectAccessHook())
+```
+
+**Learning:** Always unproxy Hibernate entities before comparison.
+
+### Challenge 2: Excessive Snapshots
+
+**Problem:** Saving nested objects created too many snapshots.
+
+**Solution:**
+- Mark some nested objects as `@DiffIgnore`
+- Use `ValueObject` for simple nested objects
+- Be selective about what to audit
+
+### Challenge 3: Transaction Boundaries
+
+**Problem:** Javers commits sometimes happened outside transaction, causing orphaned snapshots.
+
+**Solution:**
+- Always use `@Transactional` on service methods
+- Configure Javers to use same transaction manager
+- Verify with integration tests
+
+## Tech Stack
+
+- **Audit Library:** Javers 7.x
+- **Database:** PostgreSQL with JSONB storage
+- **ORM:** Spring Data JPA with Hibernate
+- **Security:** Spring Security for author context
+- **Testing:** JUnit 5, Testcontainers for integration tests
+
+## Key Takeaways
+
+✅ **Javers simplifies audit tracking** with minimal code
+✅ **JSON storage provides flexibility** for schema changes
+✅ **Custom metadata adds business context** to changes
+✅ **Migration from UUID to Long is possible** without data loss
+✅ **Index audit tables** for query performance
+✅ **Be selective** about what to audit to control storage
+
+This audit system now provides complete visibility into entity changes, enabling compliance, debugging, and data recovery across the entire application.

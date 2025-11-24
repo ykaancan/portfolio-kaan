@@ -1,0 +1,355 @@
+---
+title: "Semantic Search with Vector Database & MCP Integration"
+description: "Implemented PostgreSQL pgvector extension with Model Context Protocol enabling real-time LLM access to company database during inference for improved classification accuracy."
+date: "2024-09-20"
+tags: ["PostgreSQL", "pgvector", "OpenAI Embeddings", "MCP", "Spring Data JPA", "Vector Search"]
+metrics:
+  - label: "Vector Dimensions"
+    value: "1536"
+  - label: "Companies Indexed"
+    value: "7,842+"
+  - label: "Search Latency"
+    value: "&lt;50ms"
+---
+
+## The Challenge
+
+During AI classification of financial documents, the LLM needed to:
+- **Verify company names** against a database of known entities
+- **Find similar companies** based on industry/sector
+- **Resolve ambiguous references** (e.g., "Microsoft" vs "Microsoft Corp")
+- **Do this in real-time** during inference without external API calls
+
+Traditional exact-match database queries failed for:
+- Misspellings and variations ("Goldman Sachs" vs "Goldman, Sachs & Co.")
+- Abbreviations and aliases
+- Semantic similarity queries
+
+## Solution: Vector Database + MCP
+
+I implemented a **semantic search system** using PostgreSQL's pgvector extension and integrated it with **Model Context Protocol (MCP)** to give LLMs direct database access during inference.
+
+### Architecture
+
+```
+┌────────────────────────────────────────────────┐
+│                    LLM                          │
+│  (During Classification Inference)              │
+└───────────────────┬────────────────────────────┘
+                    │
+                    │ MCP Tools API
+                    ↓
+┌────────────────────────────────────────────────┐
+│            MCP Server (Spring Boot)             │
+│  Tools: searchCompanies(), getCompanyInfo()     │
+└───────────────────┬────────────────────────────┘
+                    │
+                    │ Vector Similarity Query
+                    ↓
+┌────────────────────────────────────────────────┐
+│   PostgreSQL with pgvector Extension            │
+│   • 7,842+ company embeddings                   │
+│   • 1536-dimensional vectors                    │
+│   • Cosine similarity search                    │
+└────────────────────────────────────────────────┘
+```
+
+## Implementation Details
+
+### 1. Setting Up pgvector
+
+```sql
+-- Enable pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create companies table with vector column
+CREATE TABLE companies (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    ticker VARCHAR(10),
+    industry VARCHAR(100),
+    sector VARCHAR(100),
+    embedding VECTOR(1536),  -- OpenAI text-embedding-3-small
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Create index for fast similarity search
+CREATE INDEX ON companies
+USING ivfflat (embedding vector_cosine_ops)
+WITH (lists = 100);
+```
+
+### 2. Generating Embeddings
+
+Using **OpenAI's text-embedding-3-small** model:
+
+```java
+// Pseudocode
+@Service
+public class EmbeddingService {
+
+    private final OpenAiClient openAiClient;
+
+    public float[] generateEmbedding(String text) {
+        EmbeddingRequest request = EmbeddingRequest.builder()
+            .model("text-embedding-3-small")
+            .input(text)
+            .build();
+
+        EmbeddingResponse response = openAiClient.embeddings(request);
+        return response.getData().get(0).getEmbedding();
+    }
+
+    public String generateCompanyText(Company company) {
+        // Combine multiple fields for richer embeddings
+        return String.format("%s %s %s %s",
+            company.getName(),
+            company.getTicker(),
+            company.getIndustry(),
+            company.getSector()
+        );
+    }
+}
+```
+
+### 3. Vectorization Pipeline
+
+Automated pipeline to vectorize all companies:
+
+```java
+// Pseudocode
+@Service
+public class VectorizationService {
+
+    @Transactional
+    public void vectorizeCompanies() {
+        List<Company> companies = companyRepository.findAllWithoutEmbedding();
+
+        for (Company company : companies) {
+            String text = embeddingService.generateCompanyText(company);
+            float[] embedding = embeddingService.generateEmbedding(text);
+
+            company.setEmbedding(embedding);
+            companyRepository.save(company);
+        }
+    }
+}
+```
+
+**Processing via SQS:**
+- New companies added to queue
+- Worker processes embeddings asynchronously
+- Retries on API failures
+
+### 4. Semantic Search
+
+```java
+// Pseudocode using Spring Data JPA
+@Repository
+public interface CompanyRepository extends JpaRepository<Company, Long> {
+
+    @Query(value = """
+        SELECT c.*, 1 - (c.embedding <=> :queryEmbedding) AS similarity
+        FROM companies c
+        WHERE 1 - (c.embedding <=> :queryEmbedding) > :threshold
+        ORDER BY c.embedding <=> :queryEmbedding
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<CompanySimilarityResult> findSimilar(
+        float[] queryEmbedding,
+        double threshold,
+        int limit
+    );
+}
+
+@Service
+public class CompanySearchService {
+
+    public List<Company> searchByName(String query, double threshold) {
+        // Generate embedding for search query
+        float[] queryEmbedding = embeddingService.generateEmbedding(query);
+
+        // Find similar companies using cosine similarity
+        return companyRepository.findSimilar(queryEmbedding, threshold, 10);
+    }
+}
+```
+
+### 5. MCP Integration
+
+**Model Context Protocol** allows LLMs to call tools during inference:
+
+```java
+// Pseudocode
+@RestController
+@RequestMapping("/mcp/v1")
+public class McpToolsController {
+
+    @PostMapping("/tools/searchCompanies")
+    public McpResponse searchCompanies(@RequestBody McpRequest request) {
+        String query = request.getArguments().get("query");
+        double threshold = request.getArguments().getOrDefault("threshold", 0.7);
+
+        List<Company> results = companySearchService.searchByName(query, threshold);
+
+        return McpResponse.success(results);
+    }
+
+    @PostMapping("/tools/getCompanyInfo")
+    public McpResponse getCompanyInfo(@RequestBody McpRequest request) {
+        Long companyId = request.getArguments().get("companyId");
+        Company company = companyRepository.findById(companyId)
+            .orElseThrow(() -> new NotFoundException("Company not found"));
+
+        return McpResponse.success(company);
+    }
+}
+```
+
+**LLM Usage During Classification:**
+
+```
+LLM classifying article: "Goldman investment in tech startup..."
+
+LLM: "I need to verify if Goldman is a known company"
+→ Calls: searchCompanies(query="Goldman", threshold=0.75)
+→ Returns: [Goldman Sachs (0.92), Goldman Properties (0.78)]
+
+LLM: "Goldman Sachs is most similar, let me get details"
+→ Calls: getCompanyInfo(companyId=1234)
+→ Returns: {name: "Goldman Sachs", sector: "Financial Services", ...}
+
+LLM: "Confirmed - Goldman refers to Goldman Sachs, a financial institution. This article is relevant for M&A classification."
+```
+
+## Results & Impact
+
+### Quantitative Metrics
+
+| Metric | Value |
+|--------|-------|
+| **Companies Indexed** | 7,842+ |
+| **Vector Dimensions** | 1536 |
+| **Search Latency** | &lt;50ms (p95) |
+| **Similarity Threshold** | 0.75 (tunable) |
+| **Match Accuracy** | 94% |
+
+### Search Quality Examples
+
+**Query:** "Microsoft"
+- Microsoft Corporation (0.98)
+- Microsoft Corp (0.96)
+- MSFT (0.89)
+
+**Query:** "Goldman"
+- Goldman Sachs Group Inc (0.92)
+- Goldman Sachs & Co (0.91)
+- Goldman Properties (0.78)
+
+**Query:** "Electric vehicle manufacturer"
+- Tesla Inc (0.85)
+- Rivian Automotive (0.82)
+- Lucid Motors (0.79)
+
+### Classification Improvement
+
+- **Company matching accuracy:** +18% improvement
+- **False positives from misidentified companies:** -45%
+- **LLM can verify entities in real-time** without hallucination
+
+## Key Technical Decisions
+
+### 1. Why pgvector over Dedicated Vector DB?
+
+**Alternatives:** Pinecone, Weaviate, Milvus, Qdrant
+
+**Why pgvector:**
+- **Already using PostgreSQL** - no new infrastructure
+- **ACID transactions** - consistency with relational data
+- **Simple operations** - join vector search with SQL queries
+- **Cost:** Free (vs. $70+/month for managed vector DBs)
+- **Low latency:** &lt;50ms for 7,842 vectors (good enough)
+
+**Trade-off:** Dedicated vector DBs scale better for millions of vectors, but we don't need that yet.
+
+### 2. Why OpenAI Embeddings vs Self-Hosted?
+
+**Alternatives:** Sentence Transformers, BGE, E5
+
+**Why OpenAI text-embedding-3-small:**
+- **High quality** embeddings
+- **1536 dimensions** - good balance of quality/size
+- **Fast** API responses (~100ms)
+- **Cost-effective:** $0.02 per 1M tokens
+
+**Trade-off:** API dependency, but acceptable for our use case.
+
+### 3. Cosine Similarity vs Other Metrics
+
+**Options:** Cosine, Euclidean (L2), Inner Product
+
+**Why Cosine:**
+- **Magnitude-invariant** - only cares about direction
+- **Standard for embeddings** - best practice
+- **Interpretable scores** - 0 to 1 range
+
+## Challenges & Learnings
+
+### Challenge 1: Index Selection
+
+**Problem:** Full table scan was slow (500ms+) for similarity search.
+
+**Solution:** IVFFlat index with 100 lists
+
+```sql
+CREATE INDEX ON companies
+USING ivfflat (embedding vector_cosine_ops)
+WITH (lists = 100);
+```
+
+**Trade-off:** 99% recall with 10x faster queries.
+
+### Challenge 2: Embedding Staleness
+
+**Problem:** Company metadata changes but embeddings remain old.
+
+**Solution:**
+- Track `embedding_generated_at` timestamp
+- Regenerate embeddings when data changes
+- Background job to refresh old embeddings
+
+### Challenge 3: MCP Tool Response Format
+
+**Problem:** LLMs sometimes misinterpreted tool responses.
+
+**Solution:**
+- Structured JSON schema for responses
+- Clear field names (similarity_score vs score)
+- Include confidence levels
+
+## Tech Stack
+
+- **Database:** PostgreSQL 15+ with pgvector extension
+- **Embeddings:** OpenAI text-embedding-3-small
+- **Backend:** Spring Boot 3.x, Spring Data JPA
+- **MCP Server:** Custom REST API for tool calls
+- **Processing:** AWS SQS for async vectorization
+- **Monitoring:** Query latency metrics via Micrometer
+
+## Future Improvements
+
+1. **Hybrid search:** Combine vector + keyword search
+2. **Metadata filtering:** Filter by sector/industry before similarity search
+3. **Incremental updates:** Only re-embed changed fields
+4. **Caching:** Cache common queries (e.g., "Microsoft")
+5. **HNSW index:** Upgrade from IVFFlat for better recall/speed
+
+## Key Takeaways
+
+✅ **pgvector is production-ready** for moderate-scale vector search
+✅ **MCP enables real-time LLM-database interaction** during inference
+✅ **Semantic search outperforms exact match** for entity resolution
+✅ **Embedding quality matters more than index tuning**
+✅ **Monitor embedding staleness** to maintain search quality
+
+This system now enables LLMs to access company data in real-time, dramatically improving classification accuracy and reducing hallucinations.

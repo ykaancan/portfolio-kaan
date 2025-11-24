@@ -1,0 +1,210 @@
+---
+title: "AI-Powered Financial Document Classification System"
+description: "Built a two-stage AI classification system with Chain-of-Thought reasoning achieving 83% precision and 10x speed improvement for M&A and corporate news articles."
+date: "2024-11-01"
+tags: ["Spring Boot 3.x", "Spring AI", "vLLM", "Ollama", "LLM", "GPU Computing", "Qwen 2.5"]
+metrics:
+  - label: "Precision"
+    value: "83%"
+  - label: "Recall"
+    value: "78%"
+  - label: "Speed Improvement"
+    value: "10x faster"
+---
+
+## The Challenge
+
+Manual classification of M&A (Mergers & Acquisitions) and corporate news articles was time-consuming and error-prone. Financial analysts needed an automated system that could:
+
+- **Accurately classify** complex financial documents
+- **Reduce false positives** that wasted analyst time
+- **Process documents quickly** without sacrificing accuracy
+- **Handle nuanced content** requiring contextual understanding
+
+The existing manual process took an average of **600 seconds per batch**, and inconsistent classification led to missed opportunities and wasted analyst hours.
+
+## Solution Architecture
+
+I built a **two-stage AI classification system** with verification to balance speed and accuracy.
+
+### Stage 1: Initial Classification
+- **Model:** Qwen 2.5 32B quantized (Q4_K_M)
+- **Technique:** Chain-of-Thought (CoT) prompting
+- **Purpose:** Perform initial classification with detailed reasoning
+
+### Stage 2: Verification
+- **Purpose:** Validate Stage 1 results to reduce false positives
+- **Method:** Second pass with focused verification prompt
+- **Output:** Final classification with confidence scores
+
+### Infrastructure
+- **GPU Setup:** 4x NVIDIA RTX 5090 (48GB VRAM each)
+- **Inference Server:** vLLM (migrated from Ollama)
+- **Framework:** Spring Boot 3.x with Spring AI
+- **Model Serving:** vLLM with tensor parallelism
+
+## Key Technical Decisions
+
+### 1. Why vLLM over Ollama?
+
+**Initial Setup:** Started with Ollama for ease of setup and local development.
+
+**Problem:** Ollama couldn't efficiently utilize multiple GPUs for a single model. With 4x RTX 5090s, we were only using ~25% of available compute.
+
+**Solution:** Migrated to vLLM with tensor parallelism
+```bash
+# vLLM launch command (pseudocode)
+python -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen2.5-32B-Instruct \
+  --tensor-parallel-size 4 \
+  --gpu-memory-utilization 0.9
+```
+
+**Result:**
+- Better GPU utilization (85%+ across all GPUs)
+- Faster inference times
+- Support for larger batch sizes
+
+### 2. Why Two-Stage Classification?
+
+**Single-stage problems:**
+- High false positive rate (35%+)
+- No confidence calibration
+- Difficult to tune precision/recall trade-off
+
+**Two-stage benefits:**
+- **Reduced false positives** by 60%
+- **Tunable threshold** between stages
+- **Explainable results** via Chain-of-Thought reasoning
+
+### 3. Chain-of-Thought Prompting
+
+Traditional prompting:
+```
+Classify this article as M&A or not: [article text]
+```
+
+Our CoT approach:
+```
+Analyze this article step by step:
+1. Identify key entities (companies, executives)
+2. Look for M&A indicators (acquisition, merger, takeover)
+3. Assess relevance and significance
+4. Provide classification with reasoning
+```
+
+This approach improved accuracy by **12 percentage points** compared to direct classification.
+
+## Implementation Details
+
+### Spring AI Integration
+
+```java
+// Pseudocode - not actual company code
+@Service
+public class ClassificationService {
+
+    private final ChatClient chatClient;
+
+    public ClassificationResult classifyDocument(String content) {
+        // Stage 1: Initial classification with CoT
+        var stage1Prompt = buildCoTPrompt(content);
+        var stage1Result = chatClient.call(stage1Prompt);
+
+        if (stage1Result.confidence() < THRESHOLD) {
+            return ClassificationResult.notRelevant();
+        }
+
+        // Stage 2: Verification
+        var stage2Prompt = buildVerificationPrompt(content, stage1Result);
+        var stage2Result = chatClient.call(stage2Prompt);
+
+        return combineResults(stage1Result, stage2Result);
+    }
+}
+```
+
+### Performance Optimization
+
+**Challenge:** Initial processing time was still ~200s per batch.
+
+**Optimizations:**
+1. **Batch processing** - Group similar-length articles
+2. **Connection pooling** - Reuse HTTP connections to vLLM
+3. **Async processing** - Non-blocking I/O with Spring WebFlux
+4. **Prompt caching** - Cache system prompts in vLLM
+
+**Result:** Average processing time reduced from 600s → 60s
+
+## Results & Impact
+
+### Quantitative Metrics
+
+| Metric | Value | Improvement |
+|--------|-------|-------------|
+| **Precision** | 83% | +28% vs. single-stage |
+| **Recall** | 78% | +15% vs. manual baseline |
+| **Processing Time** | 60s avg | 10x faster than manual |
+| **False Positive Rate** | 12% | 60% reduction |
+| **GPU Utilization** | 85%+ | 3.4x vs. Ollama |
+
+### Qualitative Improvements
+
+- **Consistent classification** across documents
+- **Explainable results** via CoT reasoning trails
+- **Reduced analyst workload** by filtering out 88% of irrelevant content
+- **Scalable infrastructure** ready for additional classification tasks
+
+## Challenges & Learnings
+
+### Challenge 1: Model Selection
+**Problem:** Tested 5+ different models (Llama, Mistral, Qwen variants)
+
+**Solution:** Built automated benchmarking framework (see Model Benchmarking project)
+
+**Learning:** Qwen 2.5 32B provided the best balance of accuracy and speed for financial content.
+
+### Challenge 2: Prompt Engineering
+**Problem:** Initial prompts produced inconsistent output formats.
+
+**Solution:**
+- Structured output schemas
+- Few-shot examples in prompts
+- JSON mode for parsing
+
+**Learning:** Invest time in prompt engineering - a 10% improvement in prompt quality can yield 20%+ accuracy gains.
+
+### Challenge 3: GPU Memory Management
+**Problem:** Occasional OOM errors with long documents (10k+ tokens)
+
+**Solution:**
+- Document chunking for long texts
+- Dynamic batch sizing based on input length
+- Memory monitoring and graceful degradation
+
+## Tech Stack
+
+- **Backend:** Spring Boot 3.x, Spring AI, Spring WebFlux
+- **LLM Serving:** vLLM with OpenAI-compatible API
+- **Model:** Qwen 2.5 32B Instruct (Q4_K_M quantization)
+- **Infrastructure:** 4x NVIDIA RTX 5090 GPUs
+- **Monitoring:** Custom metrics with Micrometer
+- **Testing:** JUnit 5 with ground truth datasets
+
+## Future Improvements
+
+1. **Fine-tuning:** Custom fine-tune Qwen on labeled financial corpus
+2. **Multi-class:** Extend beyond binary to classify M&A subtypes
+3. **Confidence calibration:** Better calibrate confidence scores
+4. **Real-time streaming:** Process documents as they arrive
+5. **Model distillation:** Distill to smaller model for cost savings
+
+## Key Takeaways
+
+✅ **Two-stage verification** significantly reduces false positives
+✅ **Chain-of-Thought prompting** improves accuracy for complex reasoning tasks
+✅ **vLLM outperforms Ollama** for multi-GPU production deployments
+✅ **Systematic benchmarking** is essential for model selection
+✅ **Infrastructure matters** - proper GPU utilization can 3-4x throughput
+
+This system now processes thousands of documents daily, enabling analysts to focus on high-value work rather than manual classification.

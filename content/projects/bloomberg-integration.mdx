@@ -1,0 +1,381 @@
+---
+title: "Bloomberg Real-Time Data Integration"
+description: "Built Bloomberg SAPI integration with session-per-request pattern for real-time shareholder data enrichment with contractual compliance of zero data persistence."
+date: "2024-08-10"
+tags: ["Spring Boot", "Bloomberg SAPI", "JWT Authentication", "Spring Security", "Real-time Data"]
+metrics:
+  - label: "Data Persistence"
+    value: "Zero"
+  - label: "Fetch Mode"
+    value: "Real-time"
+  - label: "Availability"
+    value: "99.5%"
+---
+
+## The Challenge
+
+Integrate Bloomberg's **SAPI (Server API)** to enrich our fundamental data API with real-time **top 5 shareholders** information for publicly traded companies.
+
+**Key Constraints:**
+- **Contractual requirement:** Never persist Bloomberg data
+- **Session-per-request:** New Bloomberg session for each API call
+- **Graceful degradation:** API must work even when Bloomberg is unavailable
+- **Authentication:** JWT token-based auth with Bloomberg tokens
+
+**Why This Matters:**
+Bloomberg data is expensive and contractually restricted. Violating persistence rules could result in contract termination and legal issues.
+
+## Solution Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│           Client Request                          │
+│   GET /api/companies/AAPL/fundamentals            │
+└───────────────────┬──────────────────────────────┘
+                    │
+                    ↓
+┌──────────────────────────────────────────────────┐
+│         Spring Boot API                           │
+│  1. Fetch company fundamentals (PostgreSQL)       │
+│  2. IF Bloomberg available:                       │
+│     - Create Bloomberg session                    │
+│     - Fetch top 5 shareholders                    │
+│     - Enrich response                             │
+│     - Destroy session                             │
+│  3. ELSE: Return fundamentals only                │
+└──────────────────────────────────────────────────┘
+                    │
+                    ↓
+┌──────────────────────────────────────────────────┐
+│      Bloomberg SAPI (External Service)            │
+│  • Requires JWT authentication                    │
+│  • Session-based access                           │
+│  • Real-time shareholder data                     │
+└──────────────────────────────────────────────────┘
+```
+
+## Key Technical Decisions
+
+### 1. Session-Per-Request Pattern
+
+**Why not persistent sessions?**
+- Bloomberg sessions have timeouts (30 min)
+- Managing session lifecycle adds complexity
+- Requirement: Each request should be independent
+
+**Implementation:**
+
+```java
+// Pseudocode
+@Service
+public class BloombergService {
+
+    public Optional<ShareholderData> fetchShareholders(String ticker) {
+        BloombergSession session = null;
+        try {
+            // 1. Create new session
+            session = bloombergClient.createSession(jwtToken);
+
+            // 2. Fetch data
+            ShareholderData data = session.getTopShareholders(ticker, 5);
+
+            return Optional.of(data);
+
+        } catch (BloombergUnavailableException e) {
+            log.warn("Bloomberg unavailable: {}", e.getMessage());
+            return Optional.empty();
+
+        } finally {
+            // 3. Always destroy session
+            if (session != null) {
+                session.close();
+            }
+        }
+    }
+}
+```
+
+**Benefits:**
+- No session state to manage
+- No risk of stale sessions
+- Easy error recovery
+
+**Trade-off:** Slightly higher latency (~200ms per session creation)
+
+### 2. Zero Persistence Contract Compliance
+
+**The Rule:** Never store Bloomberg data anywhere.
+
+**Compliance Measures:**
+
+```java
+// Pseudocode
+@RestController
+public class CompanyController {
+
+    @GetMapping("/companies/{ticker}/fundamentals")
+    public ResponseEntity<CompanyFundamentals> getFundamentals(@PathVariable String ticker) {
+
+        // 1. Fetch our own data (safe to persist)
+        CompanyFundamentals fundamentals = companyService.getFundamentals(ticker);
+
+        // 2. Fetch Bloomberg data (NEVER persist)
+        Optional<ShareholderData> bloomberg = bloombergService.fetchShareholders(ticker);
+
+        // 3. Merge in-memory only
+        if (bloomberg.isPresent()) {
+            fundamentals.setTopShareholders(bloomberg.get());
+        }
+
+        // 4. Return immediately - no caching, no database writes
+        return ResponseEntity.ok(fundamentals);
+    }
+}
+```
+
+**Important:**
+- No `@Cacheable` on Bloomberg data
+- No database entities for shareholder data
+- No logging of actual Bloomberg values
+- Response is built in-memory and returned immediately
+
+### 3. JWT Authentication with Bloomberg
+
+Bloomberg uses **JWT tokens** for authentication:
+
+```java
+// Pseudocode
+@Configuration
+public class BloombergConfig {
+
+    @Value("${bloomberg.client-id}")
+    private String clientId;
+
+    @Value("${bloomberg.client-secret}")
+    private String clientSecret;
+
+    @Bean
+    public BloombergClient bloombergClient() {
+        return BloombergClient.builder()
+            .clientId(clientId)
+            .clientSecret(clientSecret)
+            .tokenEndpoint("https://api.bloomberg.com/oauth/token")
+            .build();
+    }
+}
+
+@Service
+public class BloombergAuthService {
+
+    public String getAccessToken() {
+        JwtRequest request = JwtRequest.builder()
+            .clientId(clientId)
+            .clientSecret(clientSecret)
+            .grantType("client_credentials")
+            .build();
+
+        JwtResponse response = authClient.requestToken(request);
+
+        // Cache token until expiry (typically 1 hour)
+        return response.getAccessToken();
+    }
+}
+```
+
+**Token Management:**
+- Cache tokens for 55 minutes (expires at 60 minutes)
+- Refresh proactively before expiry
+- Retry on auth failures
+
+## Graceful Degradation
+
+**Requirement:** API must work even if Bloomberg is down.
+
+### Circuit Breaker Pattern
+
+```java
+// Pseudocode using Resilience4j
+@Service
+public class BloombergService {
+
+    @CircuitBreaker(name = "bloomberg", fallbackMethod = "fallbackShareholders")
+    public Optional<ShareholderData> fetchShareholders(String ticker) {
+        // Normal Bloomberg call
+        return bloombergClient.getShareholders(ticker);
+    }
+
+    private Optional<ShareholderData> fallbackShareholders(String ticker, Exception e) {
+        log.warn("Bloomberg circuit breaker open, returning empty data");
+        return Optional.empty();
+    }
+}
+```
+
+**Circuit Breaker Config:**
+- **Failure threshold:** 50% failures in 10 requests
+- **Wait duration:** 60 seconds before retry
+- **Slow call threshold:** 5 seconds
+
+### Response Structure
+
+```json
+{
+  "ticker": "AAPL",
+  "name": "Apple Inc.",
+  "fundamentals": {
+    "revenue": 383285000000,
+    "netIncome": 94680000000
+  },
+  "topShareholders": [
+    {
+      "name": "Vanguard Group Inc",
+      "percentHeld": 8.42
+    }
+  ],
+  "dataSource": {
+    "fundamentals": "internal",
+    "shareholders": "bloomberg"  // or "unavailable"
+  }
+}
+```
+
+**Client knows:**
+- Where each piece of data came from
+- Whether Bloomberg was available
+- Can adjust UI accordingly
+
+## Results & Impact
+
+### Reliability Metrics
+
+| Metric | Value |
+|--------|-------|
+| **API Availability** | 99.5% |
+| **Bloomberg Availability** | 98.2% |
+| **Fallback Rate** | 1.8% |
+| **Avg Response Time (with Bloomberg)** | 850ms |
+| **Avg Response Time (without Bloomberg)** | 120ms |
+
+### Contractual Compliance
+
+- **Zero data persistence:** ✅ 100% compliant
+- **Session-per-request:** ✅ Enforced
+- **Audit trail:** All Bloomberg calls logged (without data values)
+- **Security:** JWT tokens rotated regularly
+
+### Business Impact
+
+- **Enriched data:** Fundamental data now includes shareholder information
+- **Real-time accuracy:** Data always fresh, never stale
+- **Cost optimization:** Only fetch when needed, no storage costs
+- **Compliance:** No risk of contract violations
+
+## Challenges & Learnings
+
+### Challenge 1: Session Creation Latency
+
+**Problem:** Creating a new Bloomberg session for every request added 200-300ms latency.
+
+**Solutions Explored:**
+- Session pooling (rejected - violates contract)
+- Persistent sessions (rejected - complexity)
+- Accepted trade-off (chosen - latency acceptable for use case)
+
+**Learning:** Sometimes you have to accept trade-offs when external constraints are non-negotiable.
+
+### Challenge 2: Handling Bloomberg Outages
+
+**Problem:** Bloomberg SAPI had occasional outages (1-2% of requests).
+
+**Solution:** Circuit breaker + graceful degradation
+
+**Learning:** External services will fail. Design for failure, not just success.
+
+### Challenge 3: JWT Token Expiry
+
+**Problem:** Tokens expire after 1 hour. Initial implementation had race conditions near expiry.
+
+**Solution:**
+- Refresh tokens proactively at 55 minutes
+- Retry on 401 with fresh token
+- Thread-safe token cache
+
+**Learning:** Always refresh credentials before expiry, not after failure.
+
+## Security Considerations
+
+### 1. Credential Management
+
+```yaml
+# application.yml (example structure)
+bloomberg:
+  client-id: ${BLOOMBERG_CLIENT_ID}  # From environment
+  client-secret: ${BLOOMBERG_CLIENT_SECRET}  # From secrets manager
+```
+
+- Never commit credentials to git
+- Use environment variables or secrets manager
+- Rotate credentials regularly
+
+### 2. Rate Limiting
+
+Bloomberg has rate limits. Implemented:
+
+```java
+// Pseudocode
+@Configuration
+public class RateLimitConfig {
+
+    @Bean
+    public RateLimiter bloombergRateLimiter() {
+        return RateLimiter.of("bloomberg",
+            RateLimiterConfig.custom()
+                .limitForPeriod(100)      // 100 requests
+                .limitRefreshPeriod(Duration.ofMinutes(1))  // per minute
+                .timeoutDuration(Duration.ofSeconds(5))
+                .build()
+        );
+    }
+}
+```
+
+### 3. Audit Logging
+
+**What we log:**
+- Request timestamp
+- Ticker symbol requested
+- Success/failure status
+- Response time
+
+**What we DON'T log:**
+- Actual shareholder data
+- Bloomberg response payloads
+- JWT tokens
+
+## Tech Stack
+
+- **Backend:** Spring Boot 3.x
+- **Authentication:** JWT with Bloomberg OAuth
+- **HTTP Client:** Spring RestTemplate with connection pooling
+- **Resilience:** Resilience4j (Circuit Breaker, Rate Limiter)
+- **Security:** Spring Security, AWS Secrets Manager
+- **Monitoring:** Micrometer metrics, CloudWatch
+
+## Future Improvements
+
+1. **Batch requests:** Fetch multiple tickers in single Bloomberg session
+2. **Async processing:** Non-blocking Bloomberg calls
+3. **Monitoring:** Alert on high fallback rates
+4. **Alternative providers:** Support multiple data vendors
+5. **Client-side caching:** Let clients cache non-sensitive portions
+
+## Key Takeaways
+
+✅ **Session-per-request** simplifies state management at cost of latency
+✅ **Zero persistence is achievable** with careful architecture
+✅ **Circuit breakers enable graceful degradation**
+✅ **JWT token management requires proactive refresh**
+✅ **External constraints** (contracts) must drive design decisions
+✅ **Monitor fallback rates** to detect provider issues early
+
+This integration successfully enriches our API with real-time Bloomberg data while maintaining full contractual compliance and high availability through graceful degradation.
