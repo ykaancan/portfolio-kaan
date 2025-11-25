@@ -1,10 +1,10 @@
-import { notFound } from "next/navigation";
-import { Container } from "@/components/container";
-import { getProjectBySlug, getAllProjectSlugs } from "@/lib/projects";
-import type { Metadata } from "next";
-import { MDXRemote } from "next-mdx-remote/rsc";
-import rehypePrettyCode from "rehype-pretty-code";
-import remarkGfm from "remark-gfm";
+import { notFound } from 'next/navigation';
+import { Container } from '@/components/container';
+import { getProjectBySlug, getAllProjectSlugs } from '@/lib/projects';
+import type { Metadata } from 'next';
+import { MDXRemote } from 'next-mdx-remote/rsc';
+import rehypePrettyCode from 'rehype-pretty-code';
+import remarkGfm from 'remark-gfm';
 
 interface ProjectPageProps {
   params: Promise<{ slug: string }>;
@@ -12,7 +12,7 @@ interface ProjectPageProps {
 
 export async function generateStaticParams() {
   const slugs = getAllProjectSlugs();
-  return slugs.map((slug) => ({
+  return slugs.map(slug => ({
     slug: slug,
   }));
 }
@@ -23,18 +23,18 @@ export async function generateMetadata({ params }: ProjectPageProps): Promise<Me
 
   if (!project) {
     return {
-      title: "Project Not Found",
+      title: 'Project Not Found',
     };
   }
 
   return {
-    title: `${project.metadata.title} - Kaan Can`,
+    title: `${project.metadata.title} - Kaan Can Yıldırım`,
     description: project.metadata.description,
     keywords: project.metadata.tags,
     openGraph: {
       title: project.metadata.title,
       description: project.metadata.description,
-      type: "article",
+      type: 'article',
       publishedTime: project.metadata.date,
     },
   };
@@ -75,7 +75,12 @@ const components = {
     />
   ),
   a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a className="text-primary hover:underline" target="_blank" rel="noopener noreferrer" {...props} />
+    <a
+      className="text-primary hover:underline"
+      target="_blank"
+      rel="noopener noreferrer"
+      {...props}
+    />
   ),
   strong: (props: React.HTMLProps<HTMLElement>) => (
     <strong className="font-semibold text-foreground" {...props} />
@@ -90,21 +95,21 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     notFound();
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://yoursite.com";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yoursite.com';
 
   // Structured data for SEO
   const structuredData = {
-    "@context": "https://schema.org",
-    "@type": "TechArticle",
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
     headline: project.metadata.title,
     description: project.metadata.description,
     author: {
-      "@type": "Person",
-      name: "Kaan Can",
+      '@type': 'Person',
+      name: 'Kaan Can',
       url: baseUrl,
     },
     datePublished: project.metadata.date,
-    keywords: project.metadata.tags.join(", "),
+    keywords: project.metadata.tags.join(', '),
     url: `${baseUrl}/projects/${resolvedParams.slug}`,
   };
 
@@ -130,7 +135,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
 
               {/* Tags */}
               <div className="flex flex-wrap gap-2 mb-6">
-                {project.metadata.tags.map((tag) => (
+                {project.metadata.tags.map(tag => (
                   <span
                     key={tag}
                     className="text-sm px-3 py-1 rounded-md bg-secondary text-secondary-foreground"
@@ -143,7 +148,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
               {/* Metrics */}
               {project.metadata.metrics && project.metadata.metrics.length > 0 && (
                 <div className="grid grid-cols-3 gap-4 p-6 rounded-lg border border-border bg-card">
-                  {project.metadata.metrics.map((metric) => (
+                  {project.metadata.metrics.map(metric => (
                     <div key={metric.label} className="text-center">
                       <div className="text-2xl font-bold text-primary mb-1">{metric.value}</div>
                       <div className="text-sm text-muted-foreground">{metric.label}</div>
@@ -165,7 +170,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                       [
                         rehypePrettyCode,
                         {
-                          theme: "github-dark",
+                          theme: 'github-dark',
                           keepBackground: false,
                         },
                       ],

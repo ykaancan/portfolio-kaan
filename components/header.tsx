@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ThemeToggle } from "./theme-toggle";
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { ThemeToggle } from './theme-toggle';
 
 const navigation = [
-  { name: "Home", href: "/" },
-  { name: "Projects", href: "/projects" },
-  { name: "About", href: "/about" },
+  { name: 'Home', href: '/' },
+  { name: 'Projects', href: '/projects' },
+  { name: 'About', href: '/about' },
 ];
 
 export function Header() {
@@ -18,20 +18,18 @@ export function Header() {
       <nav className="container mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center space-x-2">
           <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-            Kaan Can
+            Kaan Can Yıldırım
           </span>
         </Link>
 
         <div className="flex items-center gap-6">
           <ul className="hidden md:flex items-center gap-6">
-            {navigation.map((item) => (
+            {navigation.map(item => (
               <li key={item.name}>
                 <Link
                   href={item.href}
                   className={`text-sm font-medium transition-colors hover:text-primary ${
-                    pathname === item.href
-                      ? "text-foreground"
-                      : "text-muted-foreground"
+                    pathname === item.href ? 'text-foreground' : 'text-muted-foreground'
                   }`}
                 >
                   {item.name}
