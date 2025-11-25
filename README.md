@@ -1,4 +1,4 @@
-# Kaan Can - Portfolio Website
+# Kaan Can Yıldırım - Portfolio Website
 
 A modern, professional portfolio website showcasing technical projects and skills. Built with Next.js 14, TypeScript, Tailwind CSS, and MDX for content management.
 
@@ -33,26 +33,32 @@ A modern, professional portfolio website showcasing technical projects and skill
 ### Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone <your-repo-url>
    cd portfolo-kaan
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    ```
 
 3. **Set up environment variables**
+
    ```bash
    cp .env.example .env.local
    ```
+
    Edit `.env.local` and set your site URL:
+
    ```env
    NEXT_PUBLIC_SITE_URL=https://yourdomain.com
    ```
 
 4. **Run the development server**
+
    ```bash
    npm run dev
    ```
@@ -65,22 +71,24 @@ A modern, professional portfolio website showcasing technical projects and skill
 Projects are stored as MDX files in the `content/projects/` directory. To add a new project:
 
 1. **Create a new MDX file** in `content/projects/`:
+
    ```bash
    touch content/projects/your-project-slug.mdx
    ```
 
 2. **Add frontmatter and content:**
+
    ```mdx
    ---
-   title: "Your Project Title"
-   description: "Brief description of your project"
-   date: "2024-11-24"
-   tags: ["Spring Boot", "PostgreSQL", "AWS"]
+   title: 'Your Project Title'
+   description: 'Brief description of your project'
+   date: '2024-11-24'
+   tags: ['Spring Boot', 'PostgreSQL', 'AWS']
    metrics:
-     - label: "Performance"
-       value: "10x faster"
-     - label: "Accuracy"
-       value: "95%"
+     - label: 'Performance'
+       value: '10x faster'
+     - label: 'Accuracy'
+       value: '95%'
    ---
 
    ## The Challenge
@@ -103,15 +111,17 @@ Projects are stored as MDX files in the `content/projects/` directory. To add a 
 ### Update Personal Information
 
 1. **Update site metadata** in `app/layout.tsx`:
+
    ```typescript
    export const metadata: Metadata = {
-     title: "Your Name - Senior Backend Developer",
-     description: "Your custom description",
+     title: 'Your Name - Senior Backend Developer',
+     description: 'Your custom description',
      // ...
    };
    ```
 
 2. **Update About page** in `app/about/page.tsx`:
+
    - Modify professional summary
    - Update skills list
    - Change philosophy section
@@ -127,12 +137,12 @@ The site uses a teal/emerald color scheme. To change it, edit `app/globals.css`:
 
 ```css
 :root {
-  --primary: 174 72% 35%;  /* Change this HSL value */
+  --primary: 174 72% 35%; /* Change this HSL value */
   /* ... */
 }
 
 .dark {
-  --primary: 174 72% 45%;  /* And this one for dark mode */
+  --primary: 174 72% 45%; /* And this one for dark mode */
   /* ... */
 }
 ```
@@ -142,13 +152,15 @@ The site uses a teal/emerald color scheme. To change it, edit `app/globals.css`:
 To add a new page:
 
 1. Create a new directory in `app/`:
+
    ```bash
    mkdir app/contact
    ```
 
 2. Add a `page.tsx` file:
+
    ```typescript
-   import { Container } from "@/components/container";
+   import { Container } from '@/components/container';
 
    export default function ContactPage() {
      return (
@@ -175,6 +187,7 @@ To add a new page:
    - Deploy!
 
 Vercel will automatically:
+
 - Build your site
 - Set up CI/CD
 - Provide preview deployments
@@ -185,6 +198,7 @@ Vercel will automatically:
 If you prefer self-hosting:
 
 1. **Update `next.config.ts`:**
+
    ```typescript
    const nextConfig: NextConfig = {
      output: 'export',
@@ -193,6 +207,7 @@ If you prefer self-hosting:
    ```
 
 2. **Build the site:**
+
    ```bash
    npm run build
    ```
@@ -313,9 +328,9 @@ This is a personal portfolio, but if you find bugs or have suggestions:
 
 ## 📧 Contact
 
-- **GitHub:** [@yourusername](https://github.com/yourusername)
-- **LinkedIn:** [Your Name](https://linkedin.com/in/yourusername)
-- **Email:** your.email@example.com
+- **GitHub:** [@yourusername](https://github.com/ykaancan)
+- **LinkedIn:** [Your Name](https://linkedin.com/in/kaan-can-yildirim)
+- **Email:** ykaancan@gmail.com
 
 ---
 

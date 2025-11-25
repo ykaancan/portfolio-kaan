@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from 'next/link';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -9,10 +9,10 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Brand */}
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-foreground">Kaan Can</h3>
+            <h3 className="text-lg font-semibold text-foreground">Kaan Can Yıldırım</h3>
             <p className="text-sm text-muted-foreground max-w-xs">
-              Senior Backend Developer specializing in Java/Spring Boot and AI
-              systems. Building scalable solutions for complex problems.
+              Senior Backend Developer specializing in Java/Spring Boot and AI systems. Building
+              scalable solutions for complex problems.
             </p>
           </div>
 
@@ -48,7 +48,7 @@ export function Footer() {
             </h3>
             <div className="flex space-x-4">
               <a
-                href="https://github.com/yourusername"
+                href="https://github.com/ykaancan"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-primary transition-colors"
@@ -70,7 +70,7 @@ export function Footer() {
                 </svg>
               </a>
               <a
-                href="https://linkedin.com/in/yourusername"
+                href="https://linkedin.com/in/kaan-can-yildirim"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-primary transition-colors"
@@ -93,7 +93,7 @@ export function Footer() {
                 </svg>
               </a>
               <a
-                href="mailto:your.email@example.com"
+                href="mailto:ykaancan@gmail.com"
                 className="text-muted-foreground hover:text-primary transition-colors"
                 aria-label="Email"
               >
@@ -113,15 +113,13 @@ export function Footer() {
                 </svg>
               </a>
             </div>
-            <p className="text-sm text-muted-foreground mt-4">
-              Open to opportunities
-            </p>
+            <p className="text-sm text-muted-foreground mt-4">Open to opportunities</p>
           </div>
         </div>
 
         <div className="mt-8 pt-8 border-t border-border">
           <p className="text-center text-sm text-muted-foreground">
-            © {currentYear} Kaan Can. All rights reserved.
+            © {currentYear} Kaan Can Yıldırım. All rights reserved.
           </p>
         </div>
       </div>

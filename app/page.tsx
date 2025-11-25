@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { Container } from "@/components/container";
+import Link from 'next/link';
+import { Container } from '@/components/container';
 
 export default function Home() {
   return (
@@ -21,16 +21,15 @@ export default function Home() {
             </div>
 
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-foreground mb-6">
-              Senior Backend Developer specializing in{" "}
-              <span className="text-primary">AI Systems</span> and{" "}
+              Senior Backend Developer specializing in{' '}
+              <span className="text-primary">AI Systems</span> and{' '}
               <span className="text-primary">Distributed Architecture</span>
             </h1>
 
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-              Building production-grade AI classification systems, distributed
-              file processing pipelines, and vector search infrastructure.
-              Experienced with Spring Boot, LLM integration, and scalable
-              backend solutions.
+              Building production-grade AI classification systems, distributed file processing
+              pipelines, and vector search infrastructure. Experienced with Spring Boot, LLM
+              integration, and scalable backend solutions.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
@@ -56,7 +55,7 @@ export default function Home() {
                 </svg>
               </Link>
               <a
-                href="/cv.pdf"
+                href="https://drive.google.com/uc?export=download&id=1pa8zFl_a--aCrNEDe62ZLfWlGvn-EpEz"
                 className="inline-flex items-center justify-center rounded-lg border border-border bg-transparent px-6 py-3 text-sm font-semibold text-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               >
                 <svg
@@ -90,25 +89,21 @@ export default function Home() {
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
             {[
-              { name: "Java 21", category: "Language" },
-              { name: "Spring Boot 3.x", category: "Framework" },
-              { name: "PostgreSQL", category: "Database" },
-              { name: "AWS", category: "Cloud" },
-              { name: "Spring AI", category: "AI/ML" },
-              { name: "Vector DB", category: "Search" },
-              { name: "Docker", category: "DevOps" },
-              { name: "LLM Integration", category: "AI/ML" },
-            ].map((tech) => (
+              { name: 'Java 21', category: 'Language' },
+              { name: 'Spring Boot 3.x', category: 'Framework' },
+              { name: 'PostgreSQL', category: 'Database' },
+              { name: 'AWS', category: 'Cloud' },
+              { name: 'Spring AI', category: 'AI/ML' },
+              { name: 'Vector DB', category: 'Search' },
+              { name: 'Docker', category: 'DevOps' },
+              { name: 'LLM Integration', category: 'AI/ML' },
+            ].map(tech => (
               <div
                 key={tech.name}
                 className="flex flex-col items-center p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors"
               >
-                <span className="font-semibold text-foreground text-sm">
-                  {tech.name}
-                </span>
-                <span className="text-xs text-muted-foreground mt-1">
-                  {tech.category}
-                </span>
+                <span className="font-semibold text-foreground text-sm">{tech.name}</span>
+                <span className="text-xs text-muted-foreground mt-1">{tech.category}</span>
               </div>
             ))}
           </div>
@@ -119,32 +114,29 @@ export default function Home() {
       <section className="py-20">
         <Container>
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-foreground mb-4">
-              Featured Projects
-            </h2>
+            <h2 className="text-3xl font-bold text-foreground mb-4">Featured Projects</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Detailed case studies of production systems with real metrics and
-              technical insights
+              Detailed case studies of production systems with real metrics and technical insights
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 mb-8">
             {[
               {
-                title: "AI-Powered Financial Document Classification",
+                title: 'AI-Powered Financial Document Classification',
                 description:
-                  "Two-stage AI classification system with 83% precision. Reduced processing time from 600s to 60s using vLLM and Chain-of-Thought reasoning.",
-                metrics: ["83% precision", "10x faster", "4x RTX 5090"],
-                slug: "ai-financial-classification",
+                  'Two-stage AI classification system with 83% precision. Reduced processing time from 600s to 60s using vLLM and Chain-of-Thought reasoning.',
+                metrics: ['83% precision', '10x faster', '4x RTX 5090'],
+                slug: 'ai-financial-classification',
               },
               {
-                title: "Multi-Source File Import Infrastructure",
+                title: 'Multi-Source File Import Infrastructure',
                 description:
-                  "Unified async pipeline supporting S3, SFTP, and local sources. Zero data loss through transaction management.",
-                metrics: ["3 sources unified", "Async processing", "Zero data loss"],
-                slug: "multi-source-import",
+                  'Unified async pipeline supporting S3, SFTP, and local sources. Zero data loss through transaction management.',
+                metrics: ['3 sources unified', 'Async processing', 'Zero data loss'],
+                slug: 'multi-source-import',
               },
-            ].map((project) => (
+            ].map(project => (
               <Link
                 key={project.slug}
                 href={`/projects/${project.slug}`}
@@ -153,11 +145,9 @@ export default function Home() {
                 <h3 className="text-xl font-semibold text-foreground mb-3 group-hover:text-primary transition-colors">
                   {project.title}
                 </h3>
-                <p className="text-muted-foreground mb-4 leading-relaxed">
-                  {project.description}
-                </p>
+                <p className="text-muted-foreground mb-4 leading-relaxed">{project.description}</p>
                 <div className="flex flex-wrap gap-2">
-                  {project.metrics.map((metric) => (
+                  {project.metrics.map(metric => (
                     <span
                       key={metric}
                       className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary font-medium"
