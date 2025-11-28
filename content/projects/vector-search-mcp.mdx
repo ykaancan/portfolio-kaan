@@ -4,12 +4,12 @@ description: "Implemented PostgreSQL pgvector extension with Model Context Proto
 date: "2024-09-20"
 tags: ["PostgreSQL", "pgvector", "OpenAI Embeddings", "MCP", "Spring Data JPA", "Vector Search"]
 metrics:
-  - label: "Vector Dimensions"
-    value: "1536"
-  - label: "Companies Indexed"
-    value: "7,842+"
-  - label: "Search Latency"
-    value: "&lt;50ms"
+  - label: "Database"
+    value: "PostgreSQL pgvector"
+  - label: "Embeddings"
+    value: "OpenAI API"
+  - label: "Integration"
+    value: "MCP Protocol"
 ---
 
 ## The Challenge
@@ -48,9 +48,9 @@ I implemented a **semantic search system** using PostgreSQL's pgvector extension
                     ↓
 ┌────────────────────────────────────────────────┐
 │   PostgreSQL with pgvector Extension            │
-│   • 7,842+ company embeddings                   │
-│   • 1536-dimensional vectors                    │
-│   • Cosine similarity search                    │
+│   • Company embeddings via OpenAI               │
+│   • Vector similarity search (IVFFlat index)    │
+│   • Cosine similarity scoring                   │
 └────────────────────────────────────────────────┘
 ```
 
@@ -224,15 +224,15 @@ LLM: "Confirmed - Goldman refers to Goldman Sachs, a financial institution. This
 
 ## Results & Impact
 
-### Quantitative Metrics
+### Technology Implementation
 
-| Metric | Value |
+| Component | Technology |
 |--------|-------|
-| **Companies Indexed** | 7,842+ |
-| **Vector Dimensions** | 1536 |
-| **Search Latency** | &lt;50ms (p95) |
-| **Similarity Threshold** | 0.75 (tunable) |
-| **Match Accuracy** | 94% |
+| **Vector Database** | PostgreSQL with pgvector extension |
+| **Embedding Model** | OpenAI text-embedding-3-small |
+| **Search Latency** | &lt;50ms (p95) with IVFFlat index |
+| **Integration Protocol** | Model Context Protocol (MCP) |
+| **Match Accuracy** | 94% with semantic search |
 
 ### Search Quality Examples
 
@@ -268,7 +268,7 @@ LLM: "Confirmed - Goldman refers to Goldman Sachs, a financial institution. This
 - **ACID transactions** - consistency with relational data
 - **Simple operations** - join vector search with SQL queries
 - **Cost:** Free (vs. $70+/month for managed vector DBs)
-- **Low latency:** &lt;50ms for 7,842 vectors (good enough)
+- **Low latency:** Sub-50ms queries with proper indexing
 
 **Trade-off:** Dedicated vector DBs scale better for millions of vectors, but we don't need that yet.
 
@@ -277,12 +277,13 @@ LLM: "Confirmed - Goldman refers to Goldman Sachs, a financial institution. This
 **Alternatives:** Sentence Transformers, BGE, E5
 
 **Why OpenAI text-embedding-3-small:**
-- **High quality** embeddings
-- **1536 dimensions** - good balance of quality/size
-- **Fast** API responses (~100ms)
-- **Cost-effective:** $0.02 per 1M tokens
+- **High quality** embeddings for semantic similarity
+- **Well-optimized** dimension count balancing quality and performance
+- **Fast API responses** with reliable uptime
+- **Cost-effective** pricing for production use
+- **Simple integration** via REST API
 
-**Trade-off:** API dependency, but acceptable for our use case.
+**Trade-off:** API dependency, but acceptable for our use case with excellent reliability.
 
 ### 3. Cosine Similarity vs Other Metrics
 
@@ -346,10 +347,11 @@ WITH (lists = 100);
 
 ## Key Takeaways
 
-✅ **pgvector is production-ready** for moderate-scale vector search
-✅ **MCP enables real-time LLM-database interaction** during inference
-✅ **Semantic search outperforms exact match** for entity resolution
-✅ **Embedding quality matters more than index tuning**
-✅ **Monitor embedding staleness** to maintain search quality
+✅ **PostgreSQL pgvector** provides production-ready vector search without additional infrastructure
+✅ **Model Context Protocol (MCP)** enables powerful real-time LLM-database interaction
+✅ **OpenAI embeddings** deliver high-quality semantic representations
+✅ **Spring Data JPA integration** makes vector queries straightforward
+✅ **IVFFlat indexing** optimizes query performance for vector similarity
+✅ **Semantic search** dramatically outperforms exact match for entity resolution
 
-This system now enables LLMs to access company data in real-time, dramatically improving classification accuracy and reducing hallucinations.
+This system leverages PostgreSQL pgvector, OpenAI embeddings, and MCP to enable LLMs to access company data in real-time, dramatically improving classification accuracy and reducing hallucinations.
