@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Professional Experience | Kaan Can Yıldırım',
   description:
-    '3+ years of experience building scalable backend systems, AI-powered applications, and full-stack solutions across fintech, retail, and enterprise domains.',
+    '4+ years of experience building scalable backend systems, AI-powered applications, and full-stack solutions across fintech, retail, and enterprise domains.',
 };
 
 export default function ExperiencePage() {
@@ -19,16 +19,17 @@ export default function ExperiencePage() {
               Professional Experience
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed max-w-3xl">
-              A comprehensive timeline of my professional journey, from early internships to
-              senior backend development roles. Specialized in building AI-powered systems,
-              distributed architectures, and scalable enterprise solutions.
+              A comprehensive timeline of my professional journey, from early internships to senior
+              backend development roles. With 4+ years of hands-on Spring Boot expertise, I
+              specialize in building AI-powered systems, distributed architectures, and scalable
+              enterprise solutions.
             </p>
           </div>
 
           {/* Stats Overview */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
             <div className="p-6 rounded-lg border border-border bg-card text-center">
-              <div className="text-3xl font-bold text-primary mb-1">3+</div>
+              <div className="text-3xl font-bold text-primary mb-1">4+</div>
               <div className="text-sm text-muted-foreground">Years Experience</div>
             </div>
             <div className="p-6 rounded-lg border border-border bg-card text-center">
