@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Container } from '@/components/container';
+import ExperienceSection from '@/components/experience-section';
 
 export default function Home() {
   return (
@@ -183,6 +184,13 @@ export default function Home() {
               </svg>
             </Link>
           </div>
+        </Container>
+      </section>
+
+      {/* Professional Experience Section */}
+      <section className="border-t border-border">
+        <Container>
+          <ExperienceSection featured={true} showTimeline={true} showViewAll={true} />
         </Container>
       </section>
     </>
