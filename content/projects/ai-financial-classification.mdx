@@ -1,6 +1,6 @@
 ---
 title: "AI-Powered Financial Document Classification System"
-description: "Built a two-stage AI classification system with Chain-of-Thought reasoning achieving 83% precision and 10x speed improvement for M&A and corporate news articles."
+description: "Built an end-to-end AI classification pipeline using Spring AI and vLLM on on-premise infrastructure, achieving 83% precision for M&A and corporate news classification with Chain-of-Thought reasoning."
 date: "2024-11-01"
 tags: ["Spring Boot 3.x", "Spring AI", "vLLM", "Ollama", "LLM", "GPU Computing", "Qwen 2.5"]
 metrics:
@@ -8,8 +8,8 @@ metrics:
     value: "83%"
   - label: "Recall"
     value: "78%"
-  - label: "Speed Improvement"
-    value: "10x faster"
+  - label: "Framework"
+    value: "Spring AI"
 ---
 
 ## The Challenge
@@ -38,18 +38,27 @@ I built a **two-stage AI classification system** with verification to balance sp
 - **Output:** Final classification with confidence scores
 
 ### Infrastructure
-- **GPU Setup:** 4x NVIDIA RTX 5090 (48GB VRAM each)
-- **Inference Server:** vLLM (migrated from Ollama)
-- **Framework:** Spring Boot 3.x with Spring AI
-- **Model Serving:** vLLM with tensor parallelism
+- **Framework:** Spring Boot 3.x with Spring AI for LLM integration
+- **Inference Server:** vLLM (migrated from Ollama) for production serving
+- **Hardware:** On-premise GPU infrastructure with tensor parallelism
+- **Model Serving:** vLLM OpenAI-compatible API
 
 ## Key Technical Decisions
 
-### 1. Why vLLM over Ollama?
+### 1. Why Spring AI for LLM Integration?
+
+**Spring AI Benefits:**
+- **Unified abstraction** for multiple LLM providers (OpenAI, Ollama, vLLM)
+- **Native Spring Boot integration** with dependency injection and configuration
+- **Prompt templates** for consistent LLM interactions
+- **Type-safe responses** with structured output parsing
+- **Production-ready** with metrics, health checks, and observability
+
+### 2. Why vLLM over Ollama?
 
 **Initial Setup:** Started with Ollama for ease of setup and local development.
 
-**Problem:** Ollama couldn't efficiently utilize multiple GPUs for a single model. With 4x RTX 5090s, we were only using ~25% of available compute.
+**Problem:** Ollama couldn't efficiently utilize on-premise GPU infrastructure for production workloads. Limited parallelism and throughput for our use case.
 
 **Solution:** Migrated to vLLM with tensor parallelism
 ```bash
@@ -61,11 +70,11 @@ python -m vllm.entrypoints.openai.api_server \
 ```
 
 **Result:**
-- Better GPU utilization (85%+ across all GPUs)
-- Faster inference times
-- Support for larger batch sizes
+- Better GPU utilization and throughput on on-premise infrastructure
+- OpenAI-compatible API that integrates seamlessly with Spring AI
+- Support for larger batch sizes and concurrent requests
 
-### 2. Why Two-Stage Classification?
+### 3. Why Two-Stage Classification?
 
 **Single-stage problems:**
 - High false positive rate (35%+)
@@ -77,7 +86,7 @@ python -m vllm.entrypoints.openai.api_server \
 - **Tunable threshold** between stages
 - **Explainable results** via Chain-of-Thought reasoning
 
-### 3. Chain-of-Thought Prompting
+### 4. Chain-of-Thought Prompting
 
 Traditional prompting:
 ```
@@ -146,7 +155,7 @@ public class ClassificationService {
 | **Recall** | 78% | +15% vs. manual baseline |
 | **Processing Time** | 60s avg | 10x faster than manual |
 | **False Positive Rate** | 12% | 60% reduction |
-| **GPU Utilization** | 85%+ | 3.4x vs. Ollama |
+| **Inference Server** | vLLM + Spring AI | Better integration vs. Ollama |
 
 ### Qualitative Improvements
 
@@ -185,9 +194,10 @@ public class ClassificationService {
 ## Tech Stack
 
 - **Backend:** Spring Boot 3.x, Spring AI, Spring WebFlux
+- **LLM Framework:** Spring AI for unified LLM integration
 - **LLM Serving:** vLLM with OpenAI-compatible API
 - **Model:** Qwen 2.5 32B Instruct (Q4_K_M quantization)
-- **Infrastructure:** 4x NVIDIA RTX 5090 GPUs
+- **Infrastructure:** On-premise GPU infrastructure with tensor parallelism
 - **Monitoring:** Custom metrics with Micrometer
 - **Testing:** JUnit 5 with ground truth datasets
 
@@ -201,10 +211,11 @@ public class ClassificationService {
 
 ## Key Takeaways
 
+✅ **Spring AI provides excellent abstraction** for LLM integration in production
 ✅ **Two-stage verification** significantly reduces false positives
 ✅ **Chain-of-Thought prompting** improves accuracy for complex reasoning tasks
-✅ **vLLM outperforms Ollama** for multi-GPU production deployments
+✅ **vLLM with on-premise infrastructure** delivers production-grade performance
+✅ **End-to-end AI pipeline** from content extraction to classification is critical
 ✅ **Systematic benchmarking** is essential for model selection
-✅ **Infrastructure matters** - proper GPU utilization can 3-4x throughput
 
 This system now processes thousands of documents daily, enabling analysts to focus on high-value work rather than manual classification.
