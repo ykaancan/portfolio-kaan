@@ -18,12 +18,41 @@ export interface Experience {
 
 export const experiences: Experience[] = [
   {
+    id: 'one68-global',
+    company: 'One68 Global Capital',
+    position: 'Quantitative Developer',
+    duration: 'December 2025 – Present',
+    startDate: '2025-12',
+    endDate: 'Present',
+    location: 'New York, United States (Remote)',
+    type: 'Full-time',
+    description: 'Architecting and optimizing AI-powered financial analysis systems for quantitative trading strategies, with focus on merger arbitrage and special situations portfolios.',
+    responsibilities: [
+      'Built AI-powered merger agreement analyzer for SEC EDGAR filings',
+      'Developed automated Q&A extraction system for merger arbitrage analysis',
+      'Created real-time price alerts desktop application with Bloomberg Terminal API',
+      'Implemented multi-format report generation (HTML, PDF, JSON)',
+      'Designed desktop monitoring system with multi-monitor support and instant notifications'
+    ],
+    techStack: [
+      'Python',
+      'Claude API',
+      'Flask',
+      'Bloomberg Terminal API',
+      'SEC EDGAR API',
+      'PDF Generation',
+      'Desktop Applications',
+      'Real-time Monitoring',
+      'Git'
+    ]
+  },
+  {
     id: 'rodgers-almer',
     company: 'Rodgers Almer LLC',
     position: 'Senior Backend Developer',
-    duration: 'July 2024 – Present',
+    duration: 'July 2024 – November 2025',
     startDate: '2024-07',
-    endDate: 'Present',
+    endDate: '2025-11',
     location: 'Remote (United States)',
     type: 'Full-time',
     description: 'Backend developer specializing in financial technology systems, focusing on AI-powered document processing, real-time data integration, and enterprise-grade Spring Boot applications for M&A analytics platform.',
