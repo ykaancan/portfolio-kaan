@@ -8,6 +8,11 @@ interface ExperienceCardProps {
 }
 
 const techColors: Record<string, string> = {
+  'Python': 'bg-blue-400/10 text-blue-400 border-blue-400/20',
+  'Flask': 'bg-gray-600/10 text-gray-600 border-gray-600/20',
+  'Claude API': 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  'Bloomberg Terminal API': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  'SEC EDGAR API': 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
   'Java': 'bg-orange-500/10 text-orange-500 border-orange-500/20',
   'Java 21': 'bg-orange-500/10 text-orange-500 border-orange-500/20',
   'Java Spring': 'bg-green-500/10 text-green-500 border-green-500/20',
