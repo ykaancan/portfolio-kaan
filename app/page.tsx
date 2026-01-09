@@ -22,15 +22,16 @@ export default function Home() {
             </div>
 
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-foreground mb-6">
-              Senior Backend Developer specializing in{' '}
-              <span className="text-primary">AI Systems</span> and{' '}
-              <span className="text-primary">Distributed Architecture</span>
+              Quantitative Developer specializing in{' '}
+              <span className="text-primary">AI-Powered Financial Systems</span> and{' '}
+              <span className="text-primary">Trading Infrastructure</span>
             </h1>
 
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-              Building production-grade AI classification systems, distributed file processing
-              pipelines, and vector search infrastructure. Experienced with Spring Boot, LLM
-              integration, and scalable backend solutions.
+              Architecting and optimizing AI-powered financial analysis systems for quantitative
+              trading strategies, with focus on merger arbitrage and special situations portfolios.
+              Experienced with LLM integration, real-time market data systems, and automated
+              analysis tools.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">

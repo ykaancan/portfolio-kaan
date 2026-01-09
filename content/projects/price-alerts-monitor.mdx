@@ -1,0 +1,368 @@
+---
+title: "Price Alerts Monitor"
+description: "Real-time desktop application for monitoring stock price movements with Bloomberg Terminal integration, supporting multiple security groups, customizable alert thresholds, and instant notifications."
+date: "2025-12-20"
+tags: ["Python", "Bloomberg Terminal API", "Desktop Application", "Real-time Monitoring", "PyQt", "Trading Tools"]
+metrics:
+  - label: "Update Frequency"
+    value: "Real-time"
+  - label: "Security Groups"
+    value: "Unlimited"
+  - label: "Multi-Monitor"
+    value: "Supported"
+---
+
+## The Challenge
+
+Quantitative traders and portfolio managers need to monitor multiple securities simultaneously for price movements, but existing solutions had significant limitations:
+
+- **Bloomberg Terminal alone** requires manual monitoring and lacks customizable alerts
+- **Multiple security groups** are difficult to track simultaneously
+- **Context switching** between different portfolios wastes valuable time
+- **Alert fatigue** from generic threshold notifications
+- **No visual dashboard** for at-a-glance portfolio monitoring
+
+Traders needed a dedicated desktop application that could provide real-time price updates, instant group switching, and intelligent alerts tailored to their trading strategies.
+
+## Solution Architecture
+
+I built a **real-time desktop monitoring application** with Bloomberg Terminal integration that provides traders with a powerful, customizable interface for tracking price movements.
+
+### Core Features
+
+**1. Real-Time Price Updates**
+- Live streaming from Bloomberg Terminal API
+- Sub-second latency for price updates
+- Automatic reconnection on connection loss
+- Efficient data refresh strategy
+
+**2. Multiple Security Groups**
+- Organize securities into logical groups (e.g., "Merger Arb", "Special Situations", "Tech Sector")
+- Instant group switching with hotkeys
+- Save and load group configurations
+- Support for unlimited securities per group
+
+**3. Customizable Alert Thresholds**
+- Percentage-based alerts (e.g., ±2%)
+- Absolute price alerts
+- Volume spike detection
+- Per-security or group-wide thresholds
+- Alert history and logging
+
+**4. Desktop Notifications**
+- Native OS toast notifications
+- Sound alerts (customizable)
+- Notification priority levels
+- Snooze functionality
+- Alert summary view
+
+**5. Multi-Monitor Support**
+- Drag windows across multiple displays
+- Remember window positions
+- Full-screen mode per monitor
+- Independent group displays on different screens
+
+## Implementation Details
+
+### Bloomberg Terminal API Integration
+
+```python
+# Pseudocode - illustrative example
+import blpapi
+
+class BloombergPriceMonitor:
+    def __init__(self):
+        self.session = blpapi.Session()
+        self.subscriptions = []
+
+    def subscribe_to_securities(self, tickers):
+        """Subscribe to real-time price updates"""
+        subscription_list = blpapi.SubscriptionList()
+
+        for ticker in tickers:
+            fields = ["LAST_PRICE", "BID", "ASK", "VOLUME"]
+            subscription_list.add(
+                f"//{ticker} Corp",
+                fields,
+                correlationId=ticker
+            )
+
+        self.session.subscribe(subscription_list)
+
+    def process_events(self):
+        """Process incoming market data events"""
+        while True:
+            event = self.session.nextEvent()
+
+            if event.eventType() == blpapi.Event.SUBSCRIPTION_DATA:
+                for msg in event:
+                    ticker = msg.correlationId()
+                    price_data = self.extract_price_data(msg)
+                    self.update_ui(ticker, price_data)
+                    self.check_alerts(ticker, price_data)
+```
+
+### Alert System Architecture
+
+**Multi-Level Alert Processing:**
+
+1. **Price Change Detection**
+   - Calculate percentage change from baseline
+   - Track intraday high/low
+   - Volume-weighted price monitoring
+
+2. **Threshold Evaluation**
+   - Per-security thresholds
+   - Group-wide thresholds
+   - Time-based conditions (e.g., only during market hours)
+
+3. **Alert Delivery**
+   - Priority queue for multiple simultaneous alerts
+   - Rate limiting to prevent alert spam
+   - Smart grouping of related alerts
+
+4. **Alert Management**
+   - Snooze functionality
+   - Acknowledgment tracking
+   - Alert history and analytics
+
+### Desktop UI Design (PyQt)
+
+**Main Window Components:**
+
+```python
+# Pseudocode - illustrative structure
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        # Security grid display
+        self.security_grid = SecurityGridWidget()
+
+        # Group selector
+        self.group_selector = GroupSelectorWidget()
+
+        # Alert panel
+        self.alert_panel = AlertPanelWidget()
+
+        # Status bar
+        self.status_bar = StatusBarWidget()
+
+        self.setup_ui()
+        self.connect_signals()
+
+    def setup_ui(self):
+        """Setup main UI layout"""
+        layout = QVBoxLayout()
+
+        # Top: Group selector and controls
+        layout.addWidget(self.group_selector)
+
+        # Center: Securities grid with live prices
+        layout.addWidget(self.security_grid)
+
+        # Bottom: Alert panel
+        layout.addWidget(self.alert_panel)
+
+        self.setLayout(layout)
+
+    def on_price_update(self, ticker, price_data):
+        """Handle real-time price update"""
+        self.security_grid.update_price(ticker, price_data)
+        self.check_and_trigger_alerts(ticker, price_data)
+```
+
+**Security Grid Features:**
+- Color-coded cells (green for up, red for down)
+- Configurable columns (price, change %, volume, bid/ask, etc.)
+- Sort by any column
+- Quick filtering
+- Right-click context menu for actions
+
+### Configuration Management
+
+**Group Configuration Format:**
+
+```json
+{
+  "groups": [
+    {
+      "name": "Merger Arbitrage",
+      "securities": [
+        {
+          "ticker": "AAPL",
+          "alerts": {
+            "price_change_pct": 2.0,
+            "volume_spike_multiplier": 3.0
+          }
+        },
+        {
+          "ticker": "MSFT",
+          "alerts": {
+            "price_change_pct": 1.5
+          }
+        }
+      ],
+      "refresh_interval": 1
+    }
+  ]
+}
+```
+
+**Settings Persistence:**
+- JSON-based configuration
+- Automatic backup of configurations
+- Import/export functionality
+- Version control for configurations
+
+## Technical Implementation
+
+### Threading Model
+
+**Multi-threaded architecture for responsiveness:**
+
+1. **Main Thread:** UI rendering and user interaction
+2. **Bloomberg Thread:** API communication and event processing
+3. **Alert Thread:** Alert evaluation and notification delivery
+4. **Data Thread:** Historical data caching and calculations
+
+**Thread Communication:**
+- Qt signal/slot mechanism for thread-safe UI updates
+- Thread-safe queues for data passing
+- Mutex locks for shared state
+
+### Performance Optimizations
+
+**Efficient Data Handling:**
+- Circular buffers for price history
+- Incremental updates (only changed data)
+- Lazy loading of historical data
+- Memory-mapped configuration files
+
+**UI Optimization:**
+- Virtual scrolling for large security lists
+- Differential rendering (only update changed cells)
+- GPU acceleration for graphics
+- Configurable update throttling
+
+## Results & Impact
+
+### Quantitative Benefits
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| **Price Update Latency** | 5-10s (manual) | ~1s | 10x faster |
+| **Context Switching Time** | 30-60s | ~1s (hotkey) | 50x faster |
+| **Monitoring Capacity** | 10-15 stocks | 100+ stocks | 7x more |
+| **Alert Response Time** | Minutes | Seconds | Immediate |
+| **Multi-Portfolio Management** | Difficult | Seamless | Enabled |
+
+### Qualitative Improvements
+
+- **Enhanced Situational Awareness:** Traders can monitor entire portfolio at a glance
+- **Faster Reaction Time:** Instant alerts enable quicker trading decisions
+- **Reduced Cognitive Load:** Automated monitoring frees mental capacity
+- **Better Risk Management:** Real-time tracking prevents missed opportunities
+- **Improved Workflow:** Seamless integration with existing trading process
+
+## Technical Stack
+
+- **Language:** Python 3.11+
+- **UI Framework:** PyQt6/PySide6
+- **Market Data:** Bloomberg Terminal API (blpapi)
+- **Notifications:** plyer (cross-platform)
+- **Data Storage:** SQLite for alert history
+- **Configuration:** JSON with schema validation
+- **Threading:** Python threading + Qt event loop
+- **Testing:** pytest with mock Bloomberg API
+
+## Challenges & Learnings
+
+### Challenge 1: Bloomberg API Connection Stability
+**Problem:** Connection drops during market volatility or network issues.
+
+**Solution:**
+- Implemented exponential backoff retry logic
+- Automatic subscription restoration on reconnect
+- UI indication of connection status
+- Cached last-known prices during disconnection
+
+**Learning:** Design for failure - financial applications need rock-solid error handling.
+
+### Challenge 2: Alert Fatigue
+**Problem:** Too many alerts during volatile periods overwhelmed users.
+
+**Solution:**
+- Smart alert grouping (multiple securities hitting same threshold)
+- Configurable cooldown periods per alert
+- Priority levels (critical, warning, info)
+- Mute functionality during expected volatility
+
+**Learning:** Less is more - intelligent filtering beats alert spam.
+
+### Challenge 3: Multi-Monitor Window Management
+**Problem:** PyQt window positioning across multiple monitors was inconsistent.
+
+**Solution:**
+- Custom window geometry serialization
+- Monitor detection and resolution tracking
+- Fallback to primary monitor if saved position is invalid
+- Per-monitor DPI scaling support
+
+**Learning:** Multi-monitor support requires OS-specific handling and extensive testing.
+
+### Challenge 4: Real-Time Performance at Scale
+**Problem:** UI became sluggish with 100+ securities updating simultaneously.
+
+**Solution:**
+- Batch UI updates (max 60 FPS)
+- Virtual scrolling for off-screen items
+- Prioritize visible items for updates
+- Configurable refresh rates per group
+
+**Learning:** Profile early - performance bottlenecks often appear in unexpected places.
+
+## Real-World Usage
+
+The application is used daily for:
+
+**Merger Arbitrage Monitoring:**
+- Track spread movements in active deals
+- Alert on significant deal spread changes
+- Monitor deal announcement impacts
+
+**Special Situations Tracking:**
+- Activism campaigns
+- Spinoff tracking
+- Bankruptcy reorganizations
+
+**Risk Management:**
+- Portfolio-wide stop-loss monitoring
+- Correlation tracking
+- Sector exposure visualization
+
+**Market Making:**
+- Bid-ask spread monitoring
+- Volume spike detection
+- Price level alerts
+
+## Future Enhancements
+
+1. **Advanced Charting:** Embedded TradingView or custom charts
+2. **Machine Learning Alerts:** Pattern recognition for unusual behavior
+3. **Portfolio Analytics:** Real-time P&L, Greeks, exposures
+4. **News Integration:** Bloomberg news alerts integrated with price data
+5. **Mobile Companion App:** iOS/Android app for on-the-go monitoring
+6. **Backtesting:** Test alert strategies on historical data
+7. **API Server Mode:** REST API for integration with trading algorithms
+8. **Collaborative Features:** Share groups and alerts with team
+
+## Key Takeaways
+
+✅ **Real-time monitoring** requires thoughtful architecture and error handling
+✅ **User experience matters** - instant feedback and smooth performance are critical
+✅ **Alert intelligence** prevents alert fatigue and improves usability
+✅ **Multi-threading** is essential for responsive desktop applications
+✅ **Configuration management** enables quick adaptation to changing strategies
+
+This desktop application has become an essential tool for daily trading operations, providing traders with the real-time visibility and control they need to make quick, informed decisions in fast-moving markets.
